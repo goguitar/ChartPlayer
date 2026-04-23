@@ -11,12 +11,6 @@ use crate::constants::*;
 use cgmath::{Vector3, Matrix4, Point3};
 use std::collections::HashMap;
 
-/// MIDI handler trait for processing note events
-pub trait MidiHandler {
-    fn handle_note_on(&mut self, channel: i32, note_number: i32, velocity: f32, sample_offset: i32);
-    fn handle_poly_pressure(&mut self, channel: i32, note_number: i32, pressure: f32, sample_offset: i32);
-}
-
 /// Base 3D scene with common rendering functionality
 #[derive(Debug, Clone)]
 pub struct Scene3D {
@@ -353,6 +347,7 @@ pub struct FretPlayerScene3D {
 
 impl FretPlayerScene3D {
     pub fn new(player: SongPlayer) -> Self {
+        let instrument_notes_len = player.get_instrument_notes().len();
         Self {
             base: ChartScene3D::new(Some(player)),
             display_notes: true,
@@ -361,7 +356,7 @@ impl FretPlayerScene3D {
             num_frets: 24,
             min_fret: 0.0,
             max_fret: 4.0,
-            notes_detected: vec![0; player.get_instrument_notes().len()],
+            notes_detected: vec![0; instrument_notes_len],
             start_note_position: 0,
             string_colors: [
                 [0.1, 0.8, 0.0, 1.0],  // Green

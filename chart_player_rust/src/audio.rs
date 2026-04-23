@@ -2,6 +2,7 @@
 //! 
 //! Provides audio playback, resampling, and mixing functionality.
 
+use std::fmt::Debug;
 use std::fs::File;
 use std::io::{BufReader, Read, Seek, SeekFrom};
 use std::sync::{Arc, Mutex};
@@ -34,7 +35,7 @@ impl<T: Copy + Default> SampleHistory<T> {
         
         while left > 0 {
             let to_copy = left.min(self.data.len() - self.current_offset);
-            self.data[current_offset..current_offset + to_copy].copy_from_slice(&source[offset..offset + to_copy]);
+            self.data[self.current_offset..self.current_offset + to_copy].copy_from_slice(&source[offset..offset + to_copy]);
             self.current_offset = (self.current_offset + to_copy) % self.data.len();
             left -= to_copy;
             offset += to_copy;
@@ -62,6 +63,27 @@ pub struct VorbisMixer {
     channels: i32,
     total_samples: u64,
     total_time: Duration,
+}
+
+impl Clone for VorbisMixer {
+    fn clone(&self) -> Self {
+        Self {
+            sample_rate: self.sample_rate,
+            channels: self.channels,
+            total_samples: self.total_samples,
+            total_time: self.total_time,
+        }
+    }
+}
+
+impl Debug for VorbisMixer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("VorbisMixer")
+            .field("sample_rate", &self.sample_rate)
+            .field("channels", &self.channels)
+            .field("total_samples", &self.total_samples)
+            .finish()
+    }
 }
 
 impl VorbisMixer {
@@ -119,6 +141,41 @@ pub struct WdlResampler {
     last_requested: usize,
     filter_latency: usize,
     iir_filter: Option<WdlResamplerIirFilter>,
+}
+
+impl Clone for WdlResampler {
+    fn clone(&self) -> Self {
+        Self {
+            srate_in: self.srate_in,
+            srate_out: self.srate_out,
+            ratio: self.ratio,
+            frac_pos: self.frac_pos,
+            filter_pos: self.filter_pos,
+            filter_q: self.filter_q,
+            lp_over_size: self.lp_over_size,
+            sinc_size: self.sinc_size,
+            sinc_over_size: self.sinc_over_size,
+            filter_cnt: self.filter_cnt,
+            interp: self.interp,
+            feed_mode: self.feed_mode,
+            filter_coeffs: self.filter_coeffs.clone(),
+            rs_in_buf: self.rs_in_buf.clone(),
+            samples_in_rs_in_buf: self.samples_in_rs_in_buf,
+            last_requested: self.last_requested,
+            filter_latency: self.filter_latency,
+            iir_filter: self.iir_filter.clone(),
+        }
+    }
+}
+
+impl Debug for WdlResampler {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("WdlResampler")
+            .field("srate_in", &self.srate_in)
+            .field("srate_out", &self.srate_out)
+            .field("ratio", &self.ratio)
+            .finish()
+    }
 }
 
 impl WdlResampler {
@@ -319,7 +376,9 @@ impl WdlResamplerIirFilter {
         let sc = 1.0 / (1.0 + alpha);
         
         self.b1 = (1.0 - cpos) * sc;
-        self.b2 = self.b0 = self.b1 * 0.5;
+        let half_b1 = self.b1 * 0.5;
+        self.b0 = half_b1;
+        self.b2 = half_b1;
         self.a1 = -2.0 * cpos * sc;
         self.a2 = (1.0 - alpha) * sc;
     }

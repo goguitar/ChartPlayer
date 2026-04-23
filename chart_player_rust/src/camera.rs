@@ -3,7 +3,7 @@
 //! Provides camera functionality including perspective/orthographic projection,
 //! view matrix calculation, and position/direction management.
 
-use cgmath::{Matrix4, Vector3, Point3, Rad};
+use cgmath::{Matrix4, Vector3, Point3, Rad, Zero, InnerSpace, EuclideanSpace, perspective, ortho};
 
 /// Represents a 3D camera with configurable projection and positioning
 #[derive(Debug, Clone)]
@@ -62,10 +62,10 @@ impl Camera3D {
         if self.is_orthographic {
             let width = self.viewport_width as f32 / self.orthographic_scale;
             let height = self.viewport_height as f32 / self.orthographic_scale;
-            Matrix4::orthographic(-width / 2.0, width / 2.0, -height / 2.0, height / 2.0, self.near_plane, self.far_plane)
+            ortho(-width / 2.0, width / 2.0, -height / 2.0, height / 2.0, self.near_plane, self.far_plane)
         } else {
             let aspect = self.viewport_width as f32 / self.viewport_height as f32;
-            Matrix4::perspective(Rad(self.field_of_view), aspect, self.near_plane, self.far_plane)
+            perspective(Rad(self.field_of_view), aspect, self.near_plane, self.far_plane)
         }
     }
     
@@ -75,7 +75,12 @@ impl Camera3D {
         
         if self.mirror_left_right {
             let view = Matrix4::look_at_rh(Point3::from_vec(self.position), Point3::from_vec(look_at), self.up);
-            view * Matrix4::from_scale(Vector3::new(-1.0, 1.0, 1.0))
+            view * Matrix4::new(
+                -1.0, 0.0, 0.0, 0.0,
+                0.0, 1.0, 0.0, 0.0,
+                0.0, 0.0, 1.0, 0.0,
+                0.0, 0.0, 0.0, 1.0
+            )
         } else {
             Matrix4::look_at_rh(Point3::from_vec(self.position), Point3::from_vec(look_at), self.up)
         }

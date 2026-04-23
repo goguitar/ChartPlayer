@@ -4,9 +4,9 @@
 
 use crate::audio::SongPlayer;
 use crate::midi::NoteDetector;
-use crate::song::{SongIndex, SongIndexEntry, SongPlayerSettings, SongTuningMode};
+use crate::song::{SongIndex, SongIndexEntry, SongTuningMode, SongInstrumentType};
 use crate::scene::{FretPlayerScene3D, ChartScene3D};
-use crate::settings::SongPlayerSettings as Settings;
+use crate::settings::SongPlayerSettings;
 use std::time::{Duration, SystemTime};
 
 /// Audio level display
@@ -169,13 +169,13 @@ pub struct SongPlayerInterface {
     song_index: Option<SongIndex>,
     song_player: Option<SongPlayer>,
     current_instrument: SongInstrumentType,
-    settings: Settings,
+    settings: SongPlayerSettings,
     need_seek: bool,
     seek_secs: f32,
 }
 
 impl SongPlayerInterface {
-    pub fn new(settings: Settings) -> Self {
+    pub fn new(settings: SongPlayerSettings) -> Self {
         Self {
             loop_marker_start: -1.0,
             loop_marker_end: -1.0,

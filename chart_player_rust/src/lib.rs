@@ -13,9 +13,9 @@ pub mod settings;
 
 pub use camera::Camera3D;
 pub use scene::{Scene3D, ChartScene3D, DrumPlayerScene3D, FretPlayerScene3D, KeysPlayerScene3D};
-pub use midi::{DrumVoice, DrumHit, MidiHandler, DrumMidiDeviceConfiguration};
-pub use audio::{SongPlayer, VorbisMixer};
-pub use song::{SongIndex, SongIndexEntry, SongData, SongPlayerSettings};
+pub use midi::{DrumVoice, DrumHit, DrumMidiDeviceConfiguration};
+pub use audio::SongPlayer;
+pub use song::{SongIndex, SongIndexEntry, SongData, SongInstrumentType};
 pub use ui::{SongPlayerInterface, LevelDisplay, TunerInterface};
 pub use settings::SongPlayerSettings;
 

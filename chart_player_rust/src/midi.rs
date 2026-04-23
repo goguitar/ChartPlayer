@@ -118,6 +118,12 @@ pub struct DrumVoice {
     pub articulation: DrumArticulation,
 }
 
+impl fmt::Display for DrumVoice {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}/{:?}", self.kit_piece, self.articulation)
+    }
+}
+
 impl DrumVoice {
     pub fn new(kit_piece: DrumKitPiece, articulation: DrumArticulation) -> Self {
         Self { kit_piece, articulation }
@@ -323,9 +329,12 @@ impl Default for DrumMidiDeviceConfiguration {
 pub static mut CURRENT_MAP: Option<DrumMidiDeviceConfiguration> = None;
 
 /// Get the current MIDI map
-pub fn get_current_map() -> &'static DrumMidiDeviceConfiguration {
+pub fn get_current_map() -> DrumMidiDeviceConfiguration {
     unsafe {
-        CURRENT_MAP.as_ref().unwrap_or(&DrumMidiDeviceConfiguration::generic())
+        match CURRENT_MAP.as_ref() {
+            Some(map) => map.clone(),
+            None => DrumMidiDeviceConfiguration::generic(),
+        }
     }
 }
 
