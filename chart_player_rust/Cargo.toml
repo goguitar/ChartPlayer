@@ -38,6 +38,7 @@ cgmath = "0.18"
 # Error handling
 thiserror = "2.0"
 anyhow = "1.0"
+rodio = "0.22.2"
 
 [features]
 default = []
