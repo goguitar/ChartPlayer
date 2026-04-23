@@ -3,18 +3,10 @@
 //! This is a Rust port of the original ChartPlayer C# project.
 //! The library provides core functionality for playing and displaying music charts.
 
-use std::sync::OnceLock;
-
-static INIT: OnceLock<bool> = OnceLock::new();
-
 /// Initialize ChartPlayer - call once at application start
-/// Fixes GNOME/Xwayland environment issues
 pub fn init() {
-    INIT.get_or_init(|| {
-        std::env::remove_var("WAYLAND_DISPLAY");
-        std::env::set_var("GDK_BACKEND", "x11");
-        true
-    });
+    // Enable debug logging for Wayland
+    std::env::set_var("WAYLAND_DEBUG", "0");
 }
 
 pub mod camera;

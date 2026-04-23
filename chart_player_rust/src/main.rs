@@ -9,7 +9,6 @@ fn main() {
     use winit::window::WindowBuilder;
     
     let event_loop = EventLoop::new().expect("Failed to create EventLoop");
-    println!("Window: ");
     
     let window = WindowBuilder::new()
         .with_title("ChartPlayer")
@@ -17,8 +16,8 @@ fn main() {
         .build(&event_loop)
         .expect("Failed to create window");
     
-    println!("{}x{}", window.inner_size().width, window.inner_size().height);
-    println!("\n=== WINDOW IS VISIBLE ===\n");
+    println!("Window: {}x{}", window.inner_size().width, window.inner_size().height);
+    println!("Open on desktop - press close to exit\n");
     
     let _ = event_loop.run(move |event, _target| {
         match event {
