@@ -1,0 +1,58 @@
+[package]
+name = "chart_player"
+version = "0.1.0"
+edition = "2021"
+authors = ["ChartPlayer Team"]
+description = "A music chart player for Guitar Hero/Rock Band style games"
+
+[lib]
+name = "chart_player"
+path = "src/lib.rs"
+
+[[bin]]
+name = "chart_player"
+path = "src/main.rs"
+
+[[bin]]
+name = "image_processor"
+path = "src/image_processor.rs"
+
+[dependencies]
+# Audio processing
+rodio = "0.19"
+symphonia = { version = "0.5", features = ["ogg", "vorbis"] }
+rubberband = "0.1"  # Pitch shifting library
+
+# Graphics (using winit + glow for cross-platform rendering)
+winit = "0.29"
+glow = "0.21"
+image = "0.25"
+
+# MIDI handling
+midir = "0.10"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Logging
+log = "0.4"
+env_logger = "0.11"
+
+# Threading
+crossbeam = "0.8"
+
+# Math utilities
+nalgebra = "0.33"
+cgmath = "0.18"
+
+# Time handling
+chrono = "0.4"
+
+# Error handling
+thiserror = "2.0"
+anyhow = "1.0"
+
+[features]
+default = []
+jack_audio = ["jack"]
