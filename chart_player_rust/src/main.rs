@@ -13,7 +13,7 @@ fn main() {
     let mut scene = ChartScene3D::new(Some(player));
     
     println!("Initialized with default settings.\n");
-    println!("DEBUG: About to run_app...\n");
+    println!("Using Wayland backend.\n");
     
     run_app(&mut camera, &mut scene);
 }
@@ -25,58 +25,34 @@ fn run_app(camera: &mut Camera3D, scene: &mut ChartScene3D) {
         window::WindowBuilder,
     };
     
-    println!("=== Starting GUI ===");
+    println!("=== Starting GUI (Wayland) ===");
+    println!("Session: {}", std::env::var("XDG_SESSION_TYPE").unwrap_or_default());
+    println!("Wayland Display: {}", std::env::var("WAYLAND_DISPLAY").unwrap_or_default());
     
-    // Force X11 for GNOME desktop
-    println!("Setting GDK_BACKEND=x11...");
-    std::env::set_var("GDK_BACKEND", "x11");
+    let event_loop = EventLoop::new().expect("Failed to create EventLoop");
+    println!("EventLoop created");
     
-    let session = std::env::var("XDG_SESSION_TYPE").unwrap_or_default();
-    let display = std::env::var("DISPLAY").unwrap_or_default();
-    println!("XDG_SESSION_TYPE: {}", session);
-    println!("DISPLAY: {}", display);
-    println!("GDK_BACKEND: {}", std::env::var("GDK_BACKEND").unwrap_or_default());
-    
-    println!("Creating EventLoop...");
-    let event_loop = match EventLoop::new() {
-        Ok(el) => el,
-        Err(e) => {
-            eprintln!("ERROR: Failed to create event loop: {:?}", e);
-            return;
-        }
-    };
-    println!("EventLoop created OK");
-    
-    println!("Building window with X11...");
-    let window_result = WindowBuilder::new()
-        .with_title("ChartPlayer v0.1.26 - X11")
+    let window = WindowBuilder::new()
+        .with_title("ChartPlayer v0.1.26")
         .with_inner_size(winit::dpi::LogicalSize::new(1280, 720))
-        .build(&event_loop);
-    
-    let window = match window_result {
-        Ok(w) => w,
-        Err(e) => {
-            eprintln!("ERROR: Failed to create window: {:?}", e);
-            return;
-        }
-    };
+        .build(&event_loop)
+        .expect("Failed to create window");
     
     let size = window.inner_size();
-    let id = window.id();
-    println!("=== WINDOW READY (X11) ===");
-    println!("Window ID: {:?}", id);
-    println!("Size: {}x{}", size.width, size.height);
+    println!("Window created: {}x{}", size.width, size.height);
+    println!("Window ID: {:?}", window.id());
+    println!("Title: ChartPlayer v0.1.26");
     
     camera.viewport_width = size.width as i32;
     camera.viewport_height = size.height as i32;
     
-    println!("ChartPlayer at {}x{}", camera.viewport_width, camera.viewport_height);
-    println!("==================== X11 WINDOW SHOULD BE VISIBLE NOW ====================");
-    println!("Close window to exit");
+    println!("\n====================");
+    println!("WINDOW CREATED - should be visible now!");
+    println!("====================");
     
     let _ = event_loop.run(move |event, _target| {
         match event {
-            Event::WindowEvent { event, window_id: _ } => {
+            Event::WindowEvent { event, .. } => {
                 match event {
                     WindowEvent::CloseRequested => {
                         println!("Close requested");
