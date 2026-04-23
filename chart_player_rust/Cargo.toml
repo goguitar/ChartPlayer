@@ -18,8 +18,6 @@ name = "image_processor"
 path = "src/image_processor.rs"
 
 [dependencies]
-# Graphics (using winit + glow for cross-platform rendering)
-winit = "0.29"
 glow = "0.17"
 image = "0.25"
 
@@ -39,6 +37,7 @@ cgmath = "0.18"
 thiserror = "2.0"
 anyhow = "1.0"
 rodio = "0.22.2"
+winit = "0.29"
 
 [features]
 default = []
