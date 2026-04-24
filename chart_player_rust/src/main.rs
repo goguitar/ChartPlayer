@@ -1,4 +1,4 @@
-//! ChartPlayer - GTK4 GUI with playback
+//! ChartPlayer - GTK4 GUI with connected controls
 
 use chart_player::init;
 use chart_player::VERSION;
@@ -15,18 +15,27 @@ fn main() {
     eprintln!("ChartPlayer v{} - GTK4\n", VERSION);
     
     let player = Arc::new(std::sync::Mutex::new(Player::default()));
-    let player_btn = player.clone();
     
-    let app = Application::builder().application_id("com.chartplayer.app").build();
+    let app = Application::builder()
+        .application_id("com.chartplayer.app")
+        .build();
     
-    app.connect_activate(move |app| {
-        let window = ApplicationWindow::builder()
-            .application(app).title("ChartPlayer")
-            .default_width(1280).default_height(720).build();
-        let main_box = ui::main_interface();
-        window.set_child(Some(&main_box));
-        window.show();
-        eprintln!("Ready - click Play to start playback");
+    app.connect_activate({
+        let player = player.clone();
+        move |app| {
+            let window = ApplicationWindow::builder()
+                .application(app)
+                .title("ChartPlayer")
+                .default_width(1280)
+                .default_height(720)
+                .build();
+            
+            let main_box = ui::main_interface(player.clone());
+            window.set_child(Some(&main_box));
+            window.show();
+            
+            eprintln!("Window ready");
+        }
     });
     
     app.run();
