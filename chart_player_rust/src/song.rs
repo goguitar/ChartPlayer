@@ -245,6 +245,24 @@ pub struct SongInstrumentPart {
     pub song_difficulty: f32,
 }
 
+/// Simplified chord/fingering description used by the fret scene.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SongChord {
+    pub name: Option<String>,
+    pub fingers: Vec<i32>,
+    pub frets: Vec<i32>,
+}
+
+impl SongChord {
+    pub fn new(name: Option<&str>, fingers: Vec<i32>, frets: Vec<i32>) -> Self {
+        Self {
+            name: name.map(|value| value.to_string()),
+            fingers,
+            frets,
+        }
+    }
+}
+
 impl SongInstrumentPart {
     pub fn new(instrument_type: SongInstrumentType, name: &str) -> Self {
         Self {
@@ -321,6 +339,28 @@ impl SongNote {
             cents_offsets: None,
         }
     }
+
+    pub fn has_technique(&self, technique: i32) -> bool {
+        self.techniques & technique != 0
+    }
+}
+
+pub struct SongNoteTechnique;
+
+impl SongNoteTechnique {
+    pub const CHORD: i32 = 1 << 0;
+    pub const CHORD_NOTE: i32 = 1 << 1;
+    pub const CONTINUED: i32 = 1 << 2;
+    pub const ACCENT: i32 = 1 << 3;
+    pub const HAMMER_ON: i32 = 1 << 4;
+    pub const PULL_OFF: i32 = 1 << 5;
+    pub const FRET_HAND_MUTE: i32 = 1 << 6;
+    pub const PALM_MUTE: i32 = 1 << 7;
+    pub const HARMONIC: i32 = 1 << 8;
+    pub const PINCH_HARMONIC: i32 = 1 << 9;
+    pub const SLIDE: i32 = 1 << 10;
+    pub const VIBRATO: i32 = 1 << 11;
+    pub const BEND: i32 = 1 << 12;
 }
 
 /// Drum note structure
@@ -346,7 +386,7 @@ impl SongDrumNote {
 }
 
 /// Simplified drum kit piece
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DrumKitPieceSimple {
     Kick,
     Snare,
@@ -375,7 +415,7 @@ impl DrumKitPieceSimple {
 }
 
 /// Simplified drum articulation
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DrumArticulationSimple {
     DrumHead,
     Rim,
