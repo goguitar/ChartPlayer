@@ -1,11 +1,13 @@
-//! ChartPlayer - GTK4 GUI
-use chart_player::{init, constants::VERSION};
-use gtk4::{Application, ApplicationWindow, Label};
+use chart_player::VERSION;
+use chart_player::init;
+use gtk4::{Application, ApplicationWindow};
 use gtk4::prelude::*;
+
+mod ui;
 
 fn main() {
     init();
-    eprintln!("ChartPlayer v{} - GTK4\n", VERSION);
+    eprintln!("ChartPlayer v{} - GTK4 GUI\n", VERSION);
     
     let app = Application::builder()
         .application_id("com.chartplayer.app")
@@ -19,11 +21,8 @@ fn main() {
             .default_height(720)
             .build();
         
-        let label = Label::builder()
-            .label("ChartPlayer v0.1.26\n1280x720")
-            .build();
-        
-        window.set_child(Some(&label));
+        let main_box = ui::main_interface();
+        window.set_child(Some(&main_box));
         window.show();
     });
     

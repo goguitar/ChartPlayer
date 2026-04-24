@@ -7,7 +7,7 @@ use crate::camera::Camera3D;
 use crate::audio::SongPlayer;
 use crate::midi::MidiHandler;
 use crate::song::{SongData, SongBeat, SongNote, SongDrumNote, SongKeyboardNote, SongStructure};
-use crate::constants::*;
+use crate::{DEFAULT_NOTE_DISPLAY_SECONDS, DEFAULT_NOTE_DISPLAY_DISTANCE};
 use cgmath::{Vector3, Matrix4, Point3};
 use std::collections::HashMap;
 
