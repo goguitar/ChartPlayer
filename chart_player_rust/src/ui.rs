@@ -70,24 +70,22 @@ pub fn create_playback_controls(player: Arc<std::sync::Mutex<Player>>) -> Box {
     let prev = Button::new();
     prev.set_icon_name("media-skip-backward-symbolic");
     prev.set_tooltip_text(Some("Previous"));
-    prev.connect_clicked({
-        let p = player.clone();
-        move |_|{if let Ok(pl)=p.lock(){pl.prev();}}
+    let p1 = player.clone();
+    prev.connect_clicked(move |_btn|{
+        if let Ok(pl)=p1.lock(){pl.prev();}
     });
     c.append(&prev);
     
     let play = Button::new();
     play.set_icon_name("media-playback-start-symbolic");
     play.set_tooltip_text(Some("Play"));
-    play.connect_clicked({
-        let p = player.clone();
-        let b = play.clone();
-        move |_|{
-            if let Ok(pl)=p.lock(){
-                pl.toggle_play();
-                let ico = if pl.is_paused(){"media-playback-start-symbolic"}else{"media-playback-pause-symbolic"};
-                b.set_icon_name(ico);
-            }
+    let p2 = player.clone();
+    let bplay = play.clone();
+    play.connect_clicked(move |_btn|{
+        if let Ok(pl)=p2.lock(){
+            pl.toggle_play();
+            let ico = if pl.is_paused(){"media-playback-start-symbolic"}else{"media-playback-pause-symbolic"};
+            bplay.set_icon_name(ico);
         }
     });
     c.append(&play);
@@ -95,20 +93,20 @@ pub fn create_playback_controls(player: Arc<std::sync::Mutex<Player>>) -> Box {
     let stop = Button::new();
     stop.set_icon_name("media-playback-stop-symbolic");
     stop.set_tooltip_text(Some("Stop"));
-    stop.connect_clicked({
-        let p = player.clone();
-        move |_|{if let Ok(pl)=p.lock(){pl.stop();}}
+    let p3 = player.clone();
+    stop.connect_clicked(move |_btn|{
+        if let Ok(pl)=p3.lock(){pl.stop();}
     });
     c.append(&stop);
     
-    let nxt = Button::new();
-    nxt.set_icon_name("media-skip-forward-symbolic");
-    nxt.set_tooltip_text(Some("Next"));
-    nxt.connect_clicked({
-        let p = player.clone();
-        move |_|{if let Ok(pl)=p.lock(){pl.next();}}
+    let next = Button::new();
+    next.set_icon_name("media-skip-forward-symbolic");
+    next.set_tooltip_text(Some("Next"));
+    let p4 = player.clone();
+    next.connect_clicked(move |_btn|{
+        if let Ok(pl)=p4.lock(){pl.next();}
     });
-    c.append(&nxt);
+    c.append(&next);
     
     let tm = Label::new(Some("0:00 / 3:45"));
     tm.set_width_request(100);
