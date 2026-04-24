@@ -1,9 +1,15 @@
 # AGENTS.md
 
-## Clone
+- Use a 10s delay before each Azure/OpenAI request to avoid Azure limitation too many requests
+- Always use Pull Request to work on
+- Commit and push when finish working. Comment PR with changes made. Update PR when some feature is add or change.
+- Run tests to ensure nothing break
+- Run chart_player_rust to ensure no errors
+
+## Repository / Clone
 
 ```bash
-git clone --recurse-submodules https://github.com/mikeoliphant/ChartPlayer
+https://github.com/goguitar/ChartPlayer
 ```
 
 Submodules: `Dependencies/UILayout`, `Dependencies/OpenSongChart`, `Dependencies/PitchDetect`.
@@ -26,7 +32,8 @@ cargo run --bin chart_player
 
 - **.NET 8.0** required for VST plugin
 - **Rust**
-- **WGPU**
+- **WGPU** required for Game 3D scene 
+- **CPAL** required for Rust audio
 - **Jack Audio** required for ChartPlayerJack on Linux/Mac
 - **librubberband2** (Rubber Band library) for pitch shifting on Linux
 
