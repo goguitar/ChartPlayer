@@ -1,42 +1,22 @@
-//! ChartPlayer - Main entry point for GUI
+//! ChartPlayer - GTK4 GUI
 use chart_player::{init, constants::VERSION};
 
 fn main() {
     init();
-    println!("ChartPlayer v{}\n", VERSION);
+    println!("ChartPlayer v{} - GTK4", VERSION);
     
-    use winit::event_loop::EventLoop;
-    use winit::window::WindowBuilder;
-    use winit::dpi::LogicalSize;
+    let app = gtk::Application::new("com.chartplayer.app", gtk::gio::ApplicationFlags::empty())
+        .expect("GTK application failed");
     
-    let event_loop = EventLoop::new().expect("Failed to create EventLoop");
-    
-    let window = WindowBuilder::new()
-        .with_title("CHARTPLAYER")
-        .with_inner_size(LogicalSize::new(1280.0, 720.0))
-        .with_visible(true)
-        .build(&event_loop)
-        .expect("Failed to create window");
-    
-    println!("Window: {}x{}", 
-        window.inner_size().width, 
-        window.inner_size().height);
-    println!("Running - close window to exit\n");
-    
-    let _ = event_loop.run(move |event, _target| {
-        match event {
-            winit::event::Event::WindowEvent { window_id: _, event } => {
-                match event {
-                    winit::event::WindowEvent::CloseRequested => {
-                        println!("Exit");
-                    }
-                    winit::event::WindowEvent::Resized(s) => {
-                        println!("Resize: {}x{}", s.width, s.height);
-                    }
-                    _ => {}
-                }
-            }
-            _ => {}
-        }
+    app.connect_activate(|app| {
+        let window = gtk::ApplicationWindow::new(app);
+        window.set_title("ChartPlayer");
+        window.set_default_size(1280, 720);
+        
+        let label = gtk::Label::new(Some("ChartPlayer v0.1.26\nWindow: 1280x720"));
+        window.set_child(Some(&label));
+        window.show();
     });
+    
+    app.run();
 }
