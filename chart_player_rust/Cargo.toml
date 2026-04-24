@@ -34,7 +34,7 @@ thiserror = "2.0"
 anyhow = "1.0"
 rodio = "0.22.2"
 
-# GUI - winit for windowing
+# Use winit for windowing (works on all systems)
 winit = "0.29"
 
 [features]
