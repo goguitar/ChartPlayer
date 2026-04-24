@@ -34,7 +34,8 @@ thiserror = "2.0"
 anyhow = "1.0"
 rodio = "0.22.2"
 
-gtk = { version = "0.18" }
+# GUI - winit for windowing
+winit = "0.29"
 
 [features]
 default = []
