@@ -7,16 +7,15 @@ fn main() {
     println!("ChartPlayer v{}\n", VERSION);
     
     use winit::event_loop::EventLoop;
-    use winit::window::WindowBuilder;
+    use winit::window::Window;
     use winit::dpi::LogicalSize;
     
     let event_loop = EventLoop::new().expect("Failed to create EventLoop");
     
-    let window = WindowBuilder::new()
+    let window = event_loop.create_window(Window::default_attributes()
         .with_title("CHARTPLAYER")
         .with_inner_size(LogicalSize::new(1280.0, 720.0))
-        .build(&event_loop)
-        .expect("Failed to create window");
+    ).expect("Failed to create window");
     
     let size = window.inner_size();
     println!("Window: {}x{}", size.width, size.height);
