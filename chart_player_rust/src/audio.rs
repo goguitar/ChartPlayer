@@ -1,17 +1,17 @@
 //! Audio module for song playback
-//! 
+//!
 //! Provides audio playback, resampling, and mixing functionality.
 
-use anyhow::{Context, Result};
 use crate::song::{
     DrumArticulationSimple, DrumKitPieceSimple, SongBeat, SongChord, SongDrumNote,
     SongInstrumentType, SongKeyboardNote, SongNote, SongNoteTechnique, SongStructure,
 };
+use anyhow::{Context, Result};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use std::fmt::Debug;
 use std::f32::consts::TAU;
+use std::fmt::Debug;
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 /// Sample history buffer for FFT processing
 pub struct SampleHistory<T> {
@@ -26,30 +26,31 @@ impl<T: Copy + Default> SampleHistory<T> {
             current_offset: 0,
         }
     }
-    
+
     pub fn set_size(&mut self, size: usize) {
         if self.data.len() != size {
             self.data.resize(size, T::default());
         }
     }
-    
+
     pub fn copy_from(&mut self, source: &[T]) {
         let mut left = source.len();
         let mut offset = 0;
-        
+
         while left > 0 {
             let to_copy = left.min(self.data.len() - self.current_offset);
-            self.data[self.current_offset..self.current_offset + to_copy].copy_from_slice(&source[offset..offset + to_copy]);
+            self.data[self.current_offset..self.current_offset + to_copy]
+                .copy_from_slice(&source[offset..offset + to_copy]);
             self.current_offset = (self.current_offset + to_copy) % self.data.len();
             left -= to_copy;
             offset += to_copy;
         }
     }
-    
+
     pub fn size(&self) -> usize {
         self.data.len()
     }
-    
+
     pub fn current_offset(&self) -> usize {
         self.current_offset
     }
@@ -99,23 +100,23 @@ impl VorbisMixer {
             total_time: Duration::from_secs(0),
         })
     }
-    
+
     pub fn sample_rate(&self) -> i32 {
         self.sample_rate
     }
-    
+
     pub fn channels(&self) -> i32 {
         self.channels
     }
-    
+
     pub fn total_samples(&self) -> u64 {
         self.total_samples
     }
-    
+
     pub fn total_time(&self) -> Duration {
         self.total_time
     }
-    
+
     pub fn read_samples(&mut self, buffer: &mut [f32], offset: usize, count: usize) -> usize {
         let available = count.min(buffer.len() - offset);
         for i in 0..available {
@@ -205,13 +206,32 @@ impl WdlResampler {
             iir_filter: None,
         }
     }
-    
-    pub fn set_mode(&mut self, interp: bool, filter_cnt: i32, sinc: bool, sinc_size: i32, sinc_interp_size: i32) {
-        self.sinc_size = if sinc && sinc_size >= 4 { sinc_size.min(8192) } else { 0 };
-        self.sinc_over_size = if self.sinc_size != 0 { sinc_interp_size.clamp(1, 4096) } else { 1 };
-        self.filter_cnt = if self.sinc_size != 0 { 0 } else { filter_cnt.clamp(0, 4) };
+
+    pub fn set_mode(
+        &mut self,
+        interp: bool,
+        filter_cnt: i32,
+        sinc: bool,
+        sinc_size: i32,
+        sinc_interp_size: i32,
+    ) {
+        self.sinc_size = if sinc && sinc_size >= 4 {
+            sinc_size.min(8192)
+        } else {
+            0
+        };
+        self.sinc_over_size = if self.sinc_size != 0 {
+            sinc_interp_size.clamp(1, 4096)
+        } else {
+            1
+        };
+        self.filter_cnt = if self.sinc_size != 0 {
+            0
+        } else {
+            filter_cnt.clamp(0, 4)
+        };
         self.interp = interp && (self.sinc_size == 0);
-        
+
         if self.sinc_size == 0 {
             self.filter_coeffs.clear();
         }
@@ -219,16 +239,16 @@ impl WdlResampler {
             self.iir_filter = None;
         }
     }
-    
+
     pub fn set_filter_parms(&mut self, filter_pos: f32, filter_q: f32) {
         self.filter_pos = filter_pos;
         self.filter_q = filter_q;
     }
-    
+
     pub fn set_feed_mode(&mut self, want_input_driven: bool) {
         self.feed_mode = want_input_driven;
     }
-    
+
     pub fn reset(&mut self, frac_pos: f64) {
         self.last_requested = 0;
         self.filter_latency = 0;
@@ -238,7 +258,7 @@ impl WdlResampler {
             filter.reset();
         }
     }
-    
+
     pub fn set_rates(&mut self, rate_in: f64, rate_out: f64) {
         if rate_in < 1.0 || rate_out < 1.0 {
             return;
@@ -249,82 +269,97 @@ impl WdlResampler {
             self.ratio = self.srate_in / self.srate_out;
         }
     }
-    
+
     pub fn get_current_latency(&self) -> f64 {
-        let latency = (self.samples_in_rs_in_buf as f64 - self.filter_latency as f64) / self.srate_in;
+        let latency =
+            (self.samples_in_rs_in_buf as f64 - self.filter_latency as f64) / self.srate_in;
         latency.max(0.0)
     }
-    
+
     pub fn resample_prepare(&mut self, out_samples: i32, nch: i32) -> Option<(&mut [f32], usize)> {
         if nch > 64 || nch < 1 {
             return None;
         }
-        
-        let fsize = if self.sinc_size > 1 { self.sinc_size } else { 0 };
+
+        let fsize = if self.sinc_size > 1 {
+            self.sinc_size
+        } else {
+            0
+        };
         let hfs = fsize / 2;
-        
+
         if hfs > 1 && self.samples_in_rs_in_buf < hfs as usize - 1 {
             self.filter_latency += hfs as usize - 1 - self.samples_in_rs_in_buf;
             self.samples_in_rs_in_buf = hfs as usize - 1;
         }
-        
+
         let sreq = if !self.feed_mode {
             (self.ratio * out_samples as f64) as i32 + 4 + fsize - self.samples_in_rs_in_buf as i32
         } else {
             out_samples
         };
         let sreq = sreq.max(0) as usize;
-        
+
         let needed = self.samples_in_rs_in_buf + sreq;
         self.rs_in_buf.resize(needed * nch as usize, 0.0);
-        
+
         self.last_requested = sreq;
-        
-        Some((&mut self.rs_in_buf, self.samples_in_rs_in_buf * nch as usize))
+
+        Some((
+            &mut self.rs_in_buf,
+            self.samples_in_rs_in_buf * nch as usize,
+        ))
     }
-    
-    pub fn resample_out(&mut self, out_buffer: &mut [f32], out_buffer_index: usize, 
-                        nsamples_in: i32, nsamples_out: i32, nch: i32) -> i32 {
+
+    pub fn resample_out(
+        &mut self,
+        out_buffer: &mut [f32],
+        out_buffer_index: usize,
+        nsamples_in: i32,
+        nsamples_out: i32,
+        nch: i32,
+    ) -> i32 {
         if nch > 64 || nch < 1 {
             return 0;
         }
-        
+
         self.samples_in_rs_in_buf += (nsamples_in as usize).min(self.last_requested);
-        
+
         let mut ret = 0;
         let mut src_pos = self.frac_pos;
         let drs_pos = self.ratio;
         let local_in = 0;
         let mut out_ptr = out_buffer_index;
         let mut ns = nsamples_out;
-        
+
         if self.interp {
             while ns > 0 {
                 let ipos = src_pos as i32;
                 if ipos >= self.samples_in_rs_in_buf as i32 - 1 {
                     break;
                 }
-                
+
                 let frac = src_pos - ipos as f64;
                 let in_ptr = (local_in + ipos as usize) * nch as usize;
-                
+
                 for c in 0..nch as usize {
                     let a = self.rs_in_buf[in_ptr + c];
                     let b = self.rs_in_buf[in_ptr + nch as usize + c];
-                    out_buffer[out_ptr + c] = (a as f32 * (1.0 - frac) as f32 + b as f32 * frac as f32);
+                    out_buffer[out_ptr + c] =
+                        (a as f32 * (1.0 - frac) as f32 + b as f32 * frac as f32);
                 }
-                
+
                 out_ptr += nch as usize;
                 src_pos += drs_pos;
                 ns -= 1;
                 ret += 1;
             }
         }
-        
+
         let isrc_pos = src_pos as i32;
         self.frac_pos = src_pos - isrc_pos as f64;
         self.samples_in_rs_in_buf = self.samples_in_rs_in_buf.saturating_sub(isrc_pos as usize);
-        
+
         ret
     }
 }
@@ -359,26 +394,26 @@ impl WdlResamplerIirFilter {
             hist: vec![[0.0; 4]; 256],
         }
     }
-    
+
     fn reset(&mut self) {
         for h in &mut self.hist {
             *h = [0.0; 4];
         }
     }
-    
+
     fn set_parms(&mut self, fpos: f64, q: f64) {
         if (self.fpos - fpos).abs() < 0.000001 {
             return;
         }
         self.fpos = fpos;
-        
+
         let pos = fpos * std::f64::consts::PI;
         let cpos = pos.cos();
         let spos = pos.sin();
-        
+
         let alpha = spos / (2.0 * q);
         let sc = 1.0 / (1.0 + alpha);
-        
+
         self.b1 = (1.0 - cpos) * sc;
         let half_b1 = self.b1 * 0.5;
         self.b0 = half_b1;
@@ -393,6 +428,46 @@ pub struct AudioOutput {
     player: SharedSongPlayer,
 }
 
+#[derive(Debug, Clone, Copy, Default)]
+struct PlaybackClock {
+    playback_instant: Option<Instant>,
+    playback_second: f32,
+}
+
+impl PlaybackClock {
+    fn clear(&mut self, current_second: f32) {
+        self.playback_instant = None;
+        self.playback_second = current_second;
+    }
+
+    fn update(&mut self, playback_second: f32, callback_info: &cpal::OutputCallbackInfo) {
+        let timestamp = callback_info.timestamp();
+        let latency = timestamp
+            .playback
+            .duration_since(&timestamp.callback)
+            .unwrap_or_default();
+        self.playback_instant = Some(Instant::now() + latency);
+        self.playback_second = playback_second;
+    }
+
+    fn estimate(&self, current_second: f32, song_length_seconds: f32, playback_speed: f32) -> f32 {
+        let Some(playback_instant) = self.playback_instant else {
+            return current_second;
+        };
+
+        let elapsed = Instant::now()
+            .checked_duration_since(playback_instant)
+            .unwrap_or_default()
+            .as_secs_f32()
+            * playback_speed.max(0.0);
+        let estimated_second = self.playback_second + elapsed;
+        let max_second = current_second
+            .max(self.playback_second)
+            .min(song_length_seconds);
+        estimated_second.clamp(0.0, max_second)
+    }
+}
+
 pub type SharedSongPlayer = Arc<Mutex<SongPlayer>>;
 
 impl AudioOutput {
@@ -405,7 +480,9 @@ impl AudioOutput {
 
     pub fn from_shared(player: SharedSongPlayer) -> Result<Self> {
         let host = cpal::default_host();
-        let device = host.default_output_device().context("failed to find default audio output device")?;
+        let device = host
+            .default_output_device()
+            .context("failed to find default audio output device")?;
         let supported_config = device
             .default_output_config()
             .context("failed to query default audio output config")?;
@@ -420,13 +497,21 @@ impl AudioOutput {
         let err_fn = |err| eprintln!("audio stream error: {err}");
 
         let stream = match supported_config.sample_format() {
-            cpal::SampleFormat::F32 => build_output_stream::<f32>(&device, &stream_config, callback_player, err_fn)?,
-            cpal::SampleFormat::I16 => build_output_stream::<i16>(&device, &stream_config, callback_player, err_fn)?,
-            cpal::SampleFormat::U16 => build_output_stream::<u16>(&device, &stream_config, callback_player, err_fn)?,
+            cpal::SampleFormat::F32 => {
+                build_output_stream::<f32>(&device, &stream_config, callback_player, err_fn)?
+            }
+            cpal::SampleFormat::I16 => {
+                build_output_stream::<i16>(&device, &stream_config, callback_player, err_fn)?
+            }
+            cpal::SampleFormat::U16 => {
+                build_output_stream::<u16>(&device, &stream_config, callback_player, err_fn)?
+            }
             sample_format => anyhow::bail!("unsupported audio sample format: {sample_format:?}"),
         };
 
-        stream.play().context("failed to start audio output stream")?;
+        stream
+            .play()
+            .context("failed to start audio output stream")?;
 
         Ok(Self {
             _stream: stream,
@@ -453,15 +538,19 @@ where
     device
         .build_output_stream(
             config,
-            move |data: &mut [T], _| write_output_data(data, channels, &player),
+            move |data: &mut [T], info| write_output_data(data, channels, &player, info),
             err_fn,
             None,
         )
         .context("failed to build audio output stream")
 }
 
-fn write_output_data<T>(output: &mut [T], channels: usize, player: &SharedSongPlayer)
-where
+fn write_output_data<T>(
+    output: &mut [T],
+    channels: usize,
+    player: &SharedSongPlayer,
+    callback_info: &cpal::OutputCallbackInfo,
+) where
     T: cpal::SizedSample + cpal::FromSample<f32>,
 {
     if channels == 0 {
@@ -473,7 +562,7 @@ where
     let mut right = vec![0.0_f32; frames];
 
     if let Ok(mut player) = player.lock() {
-        player.read_samples(&mut left, &mut right);
+        player.read_samples(&mut left, &mut right, Some(callback_info));
     }
 
     for (frame_index, frame) in output.chunks_mut(channels).enumerate() {
@@ -505,7 +594,7 @@ pub struct SongPlayer {
     pub song_tuning_mode: i32,
     pub tuning_offset_semitones: f64,
     pub pitch_shift_semitones: f64,
-    
+
     pub loudness: Vec<f32>,
     pub loaded_loudness: usize,
     pub song_rms: f32,
@@ -516,12 +605,13 @@ pub struct SongPlayer {
     pub instrument_notes: Vec<SongNote>,
     pub drum_notes: Vec<SongDrumNote>,
     pub keyboard_notes: Vec<SongKeyboardNote>,
-    
+
     vorbis_mixer: Option<VorbisMixer>,
     resampler: WdlResampler,
     seek_time: Option<f32>,
     total_samples: i64,
     current_playback_sample: i64,
+    playback_clock: PlaybackClock,
     sample_data: Vec<Vec<f32>>,
     pitch_shift: f64,
     linear_gain: f32,
@@ -570,6 +660,7 @@ impl SongPlayer {
             seek_time: None,
             total_samples: 0,
             current_playback_sample: 0,
+            playback_clock: PlaybackClock::default(),
             sample_data: vec![Vec::new(), Vec::new()],
             pitch_shift: 1.0,
             linear_gain: 1.0,
@@ -586,25 +677,183 @@ impl SongPlayer {
 
         self.chords = vec![
             SongChord::new(Some("G"), vec![2, 1, 0, 0, 0, 3], vec![3, 2, 0, 0, 0, 3]),
-            SongChord::new(Some("D"), vec![-1, -1, 0, 2, 3, 2], vec![-1, -1, 0, 2, 3, 2]),
+            SongChord::new(
+                Some("D"),
+                vec![-1, -1, 0, 2, 3, 2],
+                vec![-1, -1, 0, 2, 3, 2],
+            ),
             SongChord::new(Some("Em"), vec![0, 2, 2, 0, 0, 0], vec![0, 2, 2, 0, 0, 0]),
         ];
 
         self.instrument_notes = vec![
-            demo_note_with(0.5, 1.2, 3, 5, 4, SongNoteTechnique::ACCENT, -1, -1, -1, None),
-            demo_note_with(1.2, 0.8, 5, 4, 4, SongNoteTechnique::HAMMER_ON, -1, -1, -1, None),
-            demo_note_with(1.9, 1.2, 3, 5, 2, SongNoteTechnique::CHORD | SongNoteTechnique::ACCENT, 0, 0, -1, None),
-            demo_note_with(3.5, 0.9, 7, 3, 5, SongNoteTechnique::SLIDE, -1, -1, 10, None),
-            demo_note_with(4.6, 0.9, 10, 1, 7, SongNoteTechnique::VIBRATO, -1, -1, -1, None),
-            demo_note_with(5.4, 1.2, 2, 3, 2, SongNoteTechnique::CHORD | SongNoteTechnique::PALM_MUTE, 1, 1, -1, None),
-            demo_note_with(6.9, 0.9, 0, 2, 7, SongNoteTechnique::HARMONIC, -1, -1, -1, None),
-            demo_note_with(7.8, 1.0, 7, 2, 6, SongNoteTechnique::BEND, -1, -1, -1, Some(vec![(7.8, 0), (8.2, 120), (8.8, 120)])),
-            demo_note_with(9.2, 0.8, 9, 3, 7, SongNoteTechnique::PULL_OFF, -1, -1, -1, None),
-            demo_note_with(10.0, 1.2, 0, 5, 0, SongNoteTechnique::CHORD | SongNoteTechnique::FRET_HAND_MUTE, 2, 2, -1, None),
-            demo_note_with(11.5, 0.9, 12, 5, 10, SongNoteTechnique::PINCH_HARMONIC | SongNoteTechnique::ACCENT, -1, -1, -1, None),
-            demo_note_with(12.6, 0.9, 14, 2, 11, SongNoteTechnique::SLIDE, -1, -1, 17, None),
-            demo_note_with(13.4, 0.9, 15, 1, 12, SongNoteTechnique::PALM_MUTE, -1, -1, -1, None),
-            demo_note_with(14.2, 1.2, 17, 0, 14, SongNoteTechnique::ACCENT, -1, -1, -1, None),
+            demo_note_with(
+                0.5,
+                1.2,
+                3,
+                5,
+                4,
+                SongNoteTechnique::ACCENT,
+                -1,
+                -1,
+                -1,
+                None,
+            ),
+            demo_note_with(
+                1.2,
+                0.8,
+                5,
+                4,
+                4,
+                SongNoteTechnique::HAMMER_ON,
+                -1,
+                -1,
+                -1,
+                None,
+            ),
+            demo_note_with(
+                1.9,
+                1.2,
+                3,
+                5,
+                2,
+                SongNoteTechnique::CHORD | SongNoteTechnique::ACCENT,
+                0,
+                0,
+                -1,
+                None,
+            ),
+            demo_note_with(
+                3.5,
+                0.9,
+                7,
+                3,
+                5,
+                SongNoteTechnique::SLIDE,
+                -1,
+                -1,
+                10,
+                None,
+            ),
+            demo_note_with(
+                4.6,
+                0.9,
+                10,
+                1,
+                7,
+                SongNoteTechnique::VIBRATO,
+                -1,
+                -1,
+                -1,
+                None,
+            ),
+            demo_note_with(
+                5.4,
+                1.2,
+                2,
+                3,
+                2,
+                SongNoteTechnique::CHORD | SongNoteTechnique::PALM_MUTE,
+                1,
+                1,
+                -1,
+                None,
+            ),
+            demo_note_with(
+                6.9,
+                0.9,
+                0,
+                2,
+                7,
+                SongNoteTechnique::HARMONIC,
+                -1,
+                -1,
+                -1,
+                None,
+            ),
+            demo_note_with(
+                7.8,
+                1.0,
+                7,
+                2,
+                6,
+                SongNoteTechnique::BEND,
+                -1,
+                -1,
+                -1,
+                Some(vec![(7.8, 0), (8.2, 120), (8.8, 120)]),
+            ),
+            demo_note_with(
+                9.2,
+                0.8,
+                9,
+                3,
+                7,
+                SongNoteTechnique::PULL_OFF,
+                -1,
+                -1,
+                -1,
+                None,
+            ),
+            demo_note_with(
+                10.0,
+                1.2,
+                0,
+                5,
+                0,
+                SongNoteTechnique::CHORD | SongNoteTechnique::FRET_HAND_MUTE,
+                2,
+                2,
+                -1,
+                None,
+            ),
+            demo_note_with(
+                11.5,
+                0.9,
+                12,
+                5,
+                10,
+                SongNoteTechnique::PINCH_HARMONIC | SongNoteTechnique::ACCENT,
+                -1,
+                -1,
+                -1,
+                None,
+            ),
+            demo_note_with(
+                12.6,
+                0.9,
+                14,
+                2,
+                11,
+                SongNoteTechnique::SLIDE,
+                -1,
+                -1,
+                17,
+                None,
+            ),
+            demo_note_with(
+                13.4,
+                0.9,
+                15,
+                1,
+                12,
+                SongNoteTechnique::PALM_MUTE,
+                -1,
+                -1,
+                -1,
+                None,
+            ),
+            demo_note_with(
+                14.2,
+                1.2,
+                17,
+                0,
+                14,
+                SongNoteTechnique::ACCENT,
+                -1,
+                -1,
+                -1,
+                None,
+            ),
         ];
 
         self.drum_notes = vec![
@@ -712,7 +961,8 @@ impl SongPlayer {
 
         let end_sample = (start_sample + sample_count).min(self.sample_data[0].len());
         let base_midi = standard_string_midi(note.string, self.instrument_type) + note.fret.max(0);
-        let slide_target_midi = standard_string_midi(note.string, self.instrument_type) + note.slide_fret.max(note.fret).max(0);
+        let slide_target_midi = standard_string_midi(note.string, self.instrument_type)
+            + note.slide_fret.max(note.fret).max(0);
         let mut phase = 0.0_f32;
         let attack = 0.01;
         let release = 0.08;
@@ -721,7 +971,8 @@ impl SongPlayer {
             let note_time = (sample_index - start_sample) as f32 / sample_rate as f32;
             let absolute_time = note.time_offset + note_time;
             let progress = (note_time / note.time_length.max(f32::EPSILON)).clamp(0.0, 1.0);
-            let slide_midi = if note.has_technique(SongNoteTechnique::SLIDE) && note.slide_fret >= 0 {
+            let slide_midi = if note.has_technique(SongNoteTechnique::SLIDE) && note.slide_fret >= 0
+            {
                 lerp(base_midi as f32, slide_target_midi as f32, progress)
             } else {
                 base_midi as f32
@@ -740,10 +991,14 @@ impl SongPlayer {
             if note.has_technique(SongNoteTechnique::ACCENT) {
                 gain *= 1.35;
             }
-            if note.has_technique(SongNoteTechnique::PALM_MUTE) || note.has_technique(SongNoteTechnique::FRET_HAND_MUTE) {
+            if note.has_technique(SongNoteTechnique::PALM_MUTE)
+                || note.has_technique(SongNoteTechnique::FRET_HAND_MUTE)
+            {
                 gain *= 0.55;
             }
-            if note.has_technique(SongNoteTechnique::HARMONIC) || note.has_technique(SongNoteTechnique::PINCH_HARMONIC) {
+            if note.has_technique(SongNoteTechnique::HARMONIC)
+                || note.has_technique(SongNoteTechnique::PINCH_HARMONIC)
+            {
                 gain *= 0.75;
             }
 
@@ -755,7 +1010,15 @@ impl SongPlayer {
         normalize_stereo(&mut self.sample_data);
     }
 
-    fn render_sine_note(&mut self, frequency: f32, start_time: f32, duration: f32, gain: f32, pan: f32, sample_rate: usize) {
+    fn render_sine_note(
+        &mut self,
+        frequency: f32,
+        start_time: f32,
+        duration: f32,
+        gain: f32,
+        pan: f32,
+        sample_rate: usize,
+    ) {
         let start_sample = (start_time.max(0.0) * sample_rate as f32) as usize;
         let sample_count = (duration.max(0.0) * sample_rate as f32) as usize;
         if start_sample >= self.sample_data[0].len() || sample_count == 0 {
@@ -801,70 +1064,111 @@ impl SongPlayer {
             }
         }
 
-        cents_offsets.last().map(|offset| offset.cents as f32).unwrap_or(0.0)
+        cents_offsets
+            .last()
+            .map(|offset| offset.cents as f32)
+            .unwrap_or(0.0)
     }
-    
+
     pub fn set_playback_sample_rate(&mut self, rate: f64) {
         self.playback_sample_rate = rate;
         self.finished_playing = false;
+        self.playback_clock.clear(self.current_second);
     }
-    
+
+    pub fn current_output_second(&self) -> f32 {
+        if self.paused || self.finished_playing {
+            return self.current_second;
+        }
+
+        self.playback_clock.estimate(
+            self.current_second,
+            self.song_length_seconds,
+            self.playback_speed,
+        )
+    }
+
     pub fn set_playback_speed(&mut self, speed: f32) {
         self.playback_speed = speed;
     }
-    
+
     pub fn set_pitch_shift_semitones(&mut self, semitones: f64) {
         self.pitch_shift_semitones = semitones;
         self.update_pitch_shift();
     }
-    
+
     fn update_pitch_shift(&mut self) {
         let semitones = self.tuning_offset_semitones - self.pitch_shift_semitones;
         if self.song_tuning_mode > 0 && semitones != 0.0 {
             self.pitch_shift = 1.0 / (2.0_f64).powf(semitones / 12.0);
         }
     }
-    
+
     pub fn seek_time(&mut self, secs: f32) {
         self.seek_time = Some(secs);
         self.current_second = secs;
+        self.playback_clock.clear(secs);
     }
-    
-    pub fn read_samples(&mut self, left_channel: &mut [f32], right_channel: &mut [f32]) {
+
+    pub fn read_samples(
+        &mut self,
+        left_channel: &mut [f32],
+        right_channel: &mut [f32],
+        callback_info: Option<&cpal::OutputCallbackInfo>,
+    ) {
         if let Some(seek) = self.seek_time.take() {
             if self.song_length_seconds > 0.0 && self.total_samples > 0 {
-                self.current_playback_sample = ((seek / self.song_length_seconds) * self.total_samples as f32) as i64;
+                self.current_playback_sample =
+                    ((seek / self.song_length_seconds) * self.total_samples as f32) as i64;
             }
         }
-        
-        if self.paused || self.finished_playing || self.total_samples <= 0 || self.sample_data.len() < 2 {
+
+        if self.paused
+            || self.finished_playing
+            || self.total_samples <= 0
+            || self.sample_data.len() < 2
+        {
+            self.playback_clock.clear(self.current_second);
             left_channel.fill(0.0);
             right_channel.fill(0.0);
             return;
         }
-        
-        let samples = (left_channel.len() as i64).min(self.total_samples - self.current_playback_sample) as usize;
-        
+
+        let playback_second = self.current_second;
+
+        let samples = (left_channel.len() as i64)
+            .min(self.total_samples - self.current_playback_sample) as usize;
+
         for i in 0..samples {
-            left_channel[i] = self.sample_data[0][(self.current_playback_sample as usize + i)] * self.linear_gain;
-            right_channel[i] = self.sample_data[1][(self.current_playback_sample as usize + i)] * self.linear_gain;
+            left_channel[i] =
+                self.sample_data[0][self.current_playback_sample as usize + i] * self.linear_gain;
+            right_channel[i] =
+                self.sample_data[1][self.current_playback_sample as usize + i] * self.linear_gain;
         }
-        
+
         for i in samples..left_channel.len() {
             left_channel[i] = 0.0;
             right_channel[i] = 0.0;
         }
-        
+
         self.current_playback_sample += samples as i64;
-        self.current_second = (self.current_playback_sample as f32 / self.total_samples as f32) * self.song_length_seconds;
-        
+        self.current_second = (self.current_playback_sample as f32 / self.total_samples as f32)
+            * self.song_length_seconds;
+
+        if let Some(callback_info) = callback_info {
+            self.playback_clock.update(playback_second, callback_info);
+        }
+
         self.finished_playing = self.current_playback_sample >= self.total_samples;
+        if self.finished_playing {
+            self.playback_clock.clear(self.current_second);
+        }
     }
-    
+
     pub fn get_drum_notes(&self) -> Vec<crate::song::SongDrumNote> {
         self.drum_notes.clone()
     }
-    
+
     pub fn get_instrument_notes(&self) -> Vec<crate::song::SongNote> {
         self.instrument_notes.clone()
     }

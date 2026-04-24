@@ -1,19 +1,22 @@
 //! ChartPlayer - Rust port of ChartPlayer
 
-pub mod camera;
-pub mod scene;
-pub mod midi;
 pub mod audio;
-pub mod song;
+pub mod camera;
+pub mod midi;
+pub mod scene;
 pub mod settings;
+pub mod song;
 pub mod ui;
 
-pub use camera::Camera3D;
-pub use scene::{ChartScene3D, DrumPlayerScene3D, FretPlayerScene3D, KeysPlayerScene3D, PlayerScene3D, Scene3D, SceneVertex, SpriteFontDefinition, SpriteFontGlyph, SpriteLibrary, SpriteRegion};
-pub use midi::{DrumVoice, DrumHit, DrumMidiDeviceConfiguration};
 pub use audio::{AudioOutput, SharedSongPlayer, SongPlayer};
-pub use song::{SongIndex, SongIndexEntry, SongData, SongInstrumentType};
+pub use camera::Camera3D;
+pub use midi::{DrumHit, DrumMidiDeviceConfiguration, DrumVoice};
+pub use scene::{
+    ChartScene3D, DrumPlayerScene3D, FretPlayerScene3D, KeysPlayerScene3D, PlayerScene3D, Scene3D,
+    SceneVertex, SpriteFontDefinition, SpriteFontGlyph, SpriteLibrary, SpriteRegion,
+};
 pub use settings::SongPlayerSettings;
+pub use song::{SongData, SongIndex, SongIndexEntry, SongInstrumentType};
 pub use ui::Player;
 
 pub const VERSION: &str = "0.1.26";

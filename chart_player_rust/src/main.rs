@@ -5,7 +5,10 @@ use std::path::Path;
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
-use chart_player::{init, AudioOutput, PlayerScene3D, SceneVertex, SongInstrumentType, SongPlayer, SpriteFontDefinition, SpriteFontGlyph, SpriteLibrary, SpriteRegion, VERSION};
+use chart_player::{
+    init, AudioOutput, PlayerScene3D, SceneVertex, SongInstrumentType, SongPlayer,
+    SpriteFontDefinition, SpriteFontGlyph, SpriteLibrary, SpriteRegion, VERSION,
+};
 use image::GenericImageView;
 use wgpu::util::DeviceExt;
 use winit::dpi::{LogicalSize, PhysicalSize};
@@ -278,13 +281,20 @@ impl Renderer {
 
     fn update_geometry(&mut self) {
         let time = self.scenes[self.current_scene].current_time_seconds();
-        let vertices = self.scenes[self.current_scene].build_vertices(time, self.size.width, self.size.height, &self.sprites);
+        let vertices = self.scenes[self.current_scene].build_vertices(
+            time,
+            self.size.width,
+            self.size.height,
+            &self.sprites,
+        );
         self.vertex_count = vertices.len() as u32;
-        self.vertex_buffer = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("chart-player-vertices"),
-            contents: bytemuck::cast_slice(&vertices),
-            usage: wgpu::BufferUsages::VERTEX,
-        });
+        self.vertex_buffer = self
+            .device
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("chart-player-vertices"),
+                contents: bytemuck::cast_slice(&vertices),
+                usage: wgpu::BufferUsages::VERTEX,
+            });
     }
 
     fn render(&mut self) -> RenderResult {
@@ -295,16 +305,25 @@ impl Renderer {
         self.update_geometry();
 
         let frame = match self.surface.get_current_texture() {
-            wgpu::CurrentSurfaceTexture::Success(frame) | wgpu::CurrentSurfaceTexture::Suboptimal(frame) => frame,
-            wgpu::CurrentSurfaceTexture::Timeout | wgpu::CurrentSurfaceTexture::Occluded => return RenderResult::SkipFrame,
-            wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Validation => return RenderResult::Reconfigure,
+            wgpu::CurrentSurfaceTexture::Success(frame)
+            | wgpu::CurrentSurfaceTexture::Suboptimal(frame) => frame,
+            wgpu::CurrentSurfaceTexture::Timeout | wgpu::CurrentSurfaceTexture::Occluded => {
+                return RenderResult::SkipFrame
+            }
+            wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Validation => {
+                return RenderResult::Reconfigure
+            }
             wgpu::CurrentSurfaceTexture::Lost => return RenderResult::SurfaceLost,
         };
 
-        let view = frame.texture.create_view(&wgpu::TextureViewDescriptor::default());
-        let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("chart-player-encoder"),
-        });
+        let view = frame
+            .texture
+            .create_view(&wgpu::TextureViewDescriptor::default());
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("chart-player-encoder"),
+            });
 
         {
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -356,7 +375,8 @@ fn scene_vertex_layout<'a>() -> wgpu::VertexBufferLayout<'a> {
                 format: wgpu::VertexFormat::Float32x4,
             },
             wgpu::VertexAttribute {
-                offset: (std::mem::size_of::<[f32; 2]>() + std::mem::size_of::<[f32; 4]>()) as wgpu::BufferAddress,
+                offset: (std::mem::size_of::<[f32; 2]>() + std::mem::size_of::<[f32; 4]>())
+                    as wgpu::BufferAddress,
                 shader_location: 2,
                 format: wgpu::VertexFormat::Float32x2,
             },
@@ -364,12 +384,19 @@ fn scene_vertex_layout<'a>() -> wgpu::VertexBufferLayout<'a> {
     }
 }
 
-fn load_chartplayer_atlas(device: &wgpu::Device, queue: &wgpu::Queue) -> Result<(SpriteLibrary, wgpu::TextureView, wgpu::Sampler)> {
-    let manifest_path = Path::new("/home/csantz/ChartPlayer/ChartPlayerShared/Content/Textures/ImageManifest.xml");
-    let atlas_path = Path::new("/home/csantz/ChartPlayer/ChartPlayerShared/Content/Textures/UISheet0.png");
+fn load_chartplayer_atlas(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+) -> Result<(SpriteLibrary, wgpu::TextureView, wgpu::Sampler)> {
+    let manifest_path =
+        Path::new("/home/csantz/ChartPlayer/ChartPlayerShared/Content/Textures/ImageManifest.xml");
+    let atlas_path =
+        Path::new("/home/csantz/ChartPlayer/ChartPlayerShared/Content/Textures/UISheet0.png");
 
-    let manifest = fs::read_to_string(manifest_path).with_context(|| format!("failed to read {}", manifest_path.display()))?;
-    let atlas = image::open(atlas_path).with_context(|| format!("failed to open {}", atlas_path.display()))?;
+    let manifest = fs::read_to_string(manifest_path)
+        .with_context(|| format!("failed to read {}", manifest_path.display()))?;
+    let atlas = image::open(atlas_path)
+        .with_context(|| format!("failed to open {}", atlas_path.display()))?;
     let rgba = atlas.to_rgba8();
     let (width, height) = atlas.dimensions();
 
@@ -434,10 +461,18 @@ fn parse_manifest(manifest: &str) -> Result<SpriteLibrary> {
         };
 
         let name = extract_tag(entry, "ImageName")?;
-        let x: f32 = extract_tag(entry, "XOffset")?.parse().with_context(|| format!("invalid XOffset for {name}"))?;
-        let y: f32 = extract_tag(entry, "YOffset")?.parse().with_context(|| format!("invalid YOffset for {name}"))?;
-        let width: u32 = extract_tag(entry, "Width")?.parse().with_context(|| format!("invalid Width for {name}"))?;
-        let height: u32 = extract_tag(entry, "Height")?.parse().with_context(|| format!("invalid Height for {name}"))?;
+        let x: f32 = extract_tag(entry, "XOffset")?
+            .parse()
+            .with_context(|| format!("invalid XOffset for {name}"))?;
+        let y: f32 = extract_tag(entry, "YOffset")?
+            .parse()
+            .with_context(|| format!("invalid YOffset for {name}"))?;
+        let width: u32 = extract_tag(entry, "Width")?
+            .parse()
+            .with_context(|| format!("invalid Width for {name}"))?;
+        let height: u32 = extract_tag(entry, "Height")?
+            .parse()
+            .with_context(|| format!("invalid Height for {name}"))?;
 
         sprites.insert(
             name,

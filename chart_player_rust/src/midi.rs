@@ -1,5 +1,5 @@
 //! MIDI handling module
-//! 
+//!
 //! Provides MIDI input processing, drum mapping, and note detection
 //! for various MIDI controllers.
 
@@ -126,33 +126,47 @@ impl fmt::Display for DrumVoice {
 
 impl DrumVoice {
     pub fn new(kit_piece: DrumKitPiece, articulation: DrumArticulation) -> Self {
-        Self { kit_piece, articulation }
+        Self {
+            kit_piece,
+            articulation,
+        }
     }
-    
+
     pub fn get_kit_piece_type(&self) -> DrumKitPieceType {
         match self.kit_piece {
             DrumKitPiece::None => DrumKitPieceType::None,
             DrumKitPiece::Kick => DrumKitPieceType::Kick,
             DrumKitPiece::Snare => DrumKitPieceType::Snare,
             DrumKitPiece::HiHat => DrumKitPieceType::HiHat,
-            DrumKitPiece::Crash | DrumKitPiece::Crash2 | DrumKitPiece::Crash3 => DrumKitPieceType::Crash,
+            DrumKitPiece::Crash | DrumKitPiece::Crash2 | DrumKitPiece::Crash3 => {
+                DrumKitPieceType::Crash
+            }
             DrumKitPiece::Ride | DrumKitPiece::Ride2 => DrumKitPieceType::Ride,
-            DrumKitPiece::Tom1 | DrumKitPiece::Tom2 | DrumKitPiece::Tom3 | DrumKitPiece::Tom4 | DrumKitPiece::Tom5 => DrumKitPieceType::Tom,
-            DrumKitPiece::Flexi1 | DrumKitPiece::Flexi2 | DrumKitPiece::Flexi3 | DrumKitPiece::Flexi4 => DrumKitPieceType::Flexi,
+            DrumKitPiece::Tom1
+            | DrumKitPiece::Tom2
+            | DrumKitPiece::Tom3
+            | DrumKitPiece::Tom4
+            | DrumKitPiece::Tom5 => DrumKitPieceType::Tom,
+            DrumKitPiece::Flexi1
+            | DrumKitPiece::Flexi2
+            | DrumKitPiece::Flexi3
+            | DrumKitPiece::Flexi4 => DrumKitPieceType::Flexi,
         }
     }
-    
+
     pub fn is_compatible(&self, other: &DrumVoice) -> bool {
         self.get_kit_piece_type() == other.get_kit_piece_type()
     }
-    
+
     pub fn get_default_articulation(&self) -> DrumArticulation {
         Self::get_default_articulation_for_type(self.get_kit_piece_type())
     }
-    
+
     pub fn get_default_articulation_for_type(kit_type: DrumKitPieceType) -> DrumArticulation {
         match kit_type {
-            DrumKitPieceType::Kick | DrumKitPieceType::Tom | DrumKitPieceType::Snare => DrumArticulation::DrumHead,
+            DrumKitPieceType::Kick | DrumKitPieceType::Tom | DrumKitPieceType::Snare => {
+                DrumArticulation::DrumHead
+            }
             DrumKitPieceType::HiHat => DrumArticulation::CymbalEdge,
             DrumKitPieceType::Crash => DrumArticulation::CymbalEdge,
             DrumKitPieceType::Ride => DrumArticulation::CymbalBow,
@@ -160,7 +174,7 @@ impl DrumVoice {
             DrumKitPieceType::None => DrumArticulation::None,
         }
     }
-    
+
     pub fn get_default_dimension_value(&self) -> f32 {
         if self.get_kit_piece_type() == DrumKitPieceType::HiHat {
             1.0
@@ -188,7 +202,13 @@ impl fmt::Display for DrumHit {
 /// MIDI handler trait for processing note events
 pub trait MidiHandler {
     fn handle_note_on(&mut self, channel: i32, note_number: i32, velocity: f32, sample_offset: i32);
-    fn handle_poly_pressure(&mut self, channel: i32, note_number: i32, pressure: f32, sample_offset: i32);
+    fn handle_poly_pressure(
+        &mut self,
+        channel: i32,
+        note_number: i32,
+        pressure: f32,
+        sample_offset: i32,
+    );
 }
 
 /// Drum MIDI device configuration
@@ -204,7 +224,7 @@ pub struct DrumMidiDeviceConfiguration {
     pub snare_position_center: f32,
     pub snare_position_edge: f32,
     pub snare_hot_spot_compensation: f32,
-    
+
     midi_map: HashMap<i32, DrumVoice>,
 }
 
@@ -212,29 +232,83 @@ impl DrumMidiDeviceConfiguration {
     pub fn generic() -> Self {
         let mut config = Self::new();
         config.name = "Generic".to_string();
-        
-        config.midi_map.insert(35, DrumVoice::new(DrumKitPiece::Kick, DrumArticulation::DrumHead));
-        config.midi_map.insert(36, DrumVoice::new(DrumKitPiece::Kick, DrumArticulation::DrumHead));
-        config.midi_map.insert(38, DrumVoice::new(DrumKitPiece::Snare, DrumArticulation::DrumHead));
-        config.midi_map.insert(37, DrumVoice::new(DrumKitPiece::Snare, DrumArticulation::SideStick));
-        config.midi_map.insert(40, DrumVoice::new(DrumKitPiece::Snare, DrumArticulation::DrumHead));
-        config.midi_map.insert(48, DrumVoice::new(DrumKitPiece::Tom1, DrumArticulation::DrumHead));
-        config.midi_map.insert(45, DrumVoice::new(DrumKitPiece::Tom2, DrumArticulation::DrumHead));
-        config.midi_map.insert(43, DrumVoice::new(DrumKitPiece::Tom3, DrumArticulation::DrumHead));
-        config.midi_map.insert(47, DrumVoice::new(DrumKitPiece::Tom4, DrumArticulation::DrumHead));
-        config.midi_map.insert(46, DrumVoice::new(DrumKitPiece::HiHat, DrumArticulation::HiHatOpen));
-        config.midi_map.insert(42, DrumVoice::new(DrumKitPiece::HiHat, DrumArticulation::HiHatClosed));
-        config.midi_map.insert(44, DrumVoice::new(DrumKitPiece::HiHat, DrumArticulation::HiHatChick));
-        config.midi_map.insert(51, DrumVoice::new(DrumKitPiece::Ride, DrumArticulation::CymbalBow));
-        config.midi_map.insert(53, DrumVoice::new(DrumKitPiece::Ride, DrumArticulation::CymbalBell));
-        config.midi_map.insert(59, DrumVoice::new(DrumKitPiece::Ride, DrumArticulation::CymbalEdge));
-        config.midi_map.insert(49, DrumVoice::new(DrumKitPiece::Crash, DrumArticulation::CymbalEdge));
-        config.midi_map.insert(57, DrumVoice::new(DrumKitPiece::Crash2, DrumArticulation::CymbalEdge));
-        config.midi_map.insert(55, DrumVoice::new(DrumKitPiece::Crash3, DrumArticulation::CymbalEdge));
-        
+
+        config.midi_map.insert(
+            35,
+            DrumVoice::new(DrumKitPiece::Kick, DrumArticulation::DrumHead),
+        );
+        config.midi_map.insert(
+            36,
+            DrumVoice::new(DrumKitPiece::Kick, DrumArticulation::DrumHead),
+        );
+        config.midi_map.insert(
+            38,
+            DrumVoice::new(DrumKitPiece::Snare, DrumArticulation::DrumHead),
+        );
+        config.midi_map.insert(
+            37,
+            DrumVoice::new(DrumKitPiece::Snare, DrumArticulation::SideStick),
+        );
+        config.midi_map.insert(
+            40,
+            DrumVoice::new(DrumKitPiece::Snare, DrumArticulation::DrumHead),
+        );
+        config.midi_map.insert(
+            48,
+            DrumVoice::new(DrumKitPiece::Tom1, DrumArticulation::DrumHead),
+        );
+        config.midi_map.insert(
+            45,
+            DrumVoice::new(DrumKitPiece::Tom2, DrumArticulation::DrumHead),
+        );
+        config.midi_map.insert(
+            43,
+            DrumVoice::new(DrumKitPiece::Tom3, DrumArticulation::DrumHead),
+        );
+        config.midi_map.insert(
+            47,
+            DrumVoice::new(DrumKitPiece::Tom4, DrumArticulation::DrumHead),
+        );
+        config.midi_map.insert(
+            46,
+            DrumVoice::new(DrumKitPiece::HiHat, DrumArticulation::HiHatOpen),
+        );
+        config.midi_map.insert(
+            42,
+            DrumVoice::new(DrumKitPiece::HiHat, DrumArticulation::HiHatClosed),
+        );
+        config.midi_map.insert(
+            44,
+            DrumVoice::new(DrumKitPiece::HiHat, DrumArticulation::HiHatChick),
+        );
+        config.midi_map.insert(
+            51,
+            DrumVoice::new(DrumKitPiece::Ride, DrumArticulation::CymbalBow),
+        );
+        config.midi_map.insert(
+            53,
+            DrumVoice::new(DrumKitPiece::Ride, DrumArticulation::CymbalBell),
+        );
+        config.midi_map.insert(
+            59,
+            DrumVoice::new(DrumKitPiece::Ride, DrumArticulation::CymbalEdge),
+        );
+        config.midi_map.insert(
+            49,
+            DrumVoice::new(DrumKitPiece::Crash, DrumArticulation::CymbalEdge),
+        );
+        config.midi_map.insert(
+            57,
+            DrumVoice::new(DrumKitPiece::Crash2, DrumArticulation::CymbalEdge),
+        );
+        config.midi_map.insert(
+            55,
+            DrumVoice::new(DrumKitPiece::Crash3, DrumArticulation::CymbalEdge),
+        );
+
         config
     }
-    
+
     pub fn new() -> Self {
         Self {
             name: String::new(),
@@ -250,24 +324,32 @@ impl DrumMidiDeviceConfiguration {
             midi_map: HashMap::new(),
         }
     }
-    
+
     pub fn get_voice_from_midi_note(&self, midi_note: i32) -> DrumVoice {
-        self.midi_map.get(&midi_note)
+        self.midi_map
+            .get(&midi_note)
             .copied()
             .unwrap_or(DrumVoice::new(DrumKitPiece::None, DrumArticulation::None))
     }
-    
+
     pub fn set_voice(&mut self, midi_note: i32, voice: DrumVoice) {
         self.midi_map.insert(midi_note, voice);
     }
-    
+
     pub fn set_hi_hat_pedal_value(&mut self, pedal_value: f32) {
         self.current_pedal_value = pedal_value;
     }
-    
-    pub fn handle_note_on(&self, channel: i32, note_number: i32, velocity: f32, sample_offset: i32, is_live: bool) -> Option<DrumHit> {
+
+    pub fn handle_note_on(
+        &self,
+        channel: i32,
+        note_number: i32,
+        velocity: f32,
+        sample_offset: i32,
+        is_live: bool,
+    ) -> Option<DrumHit> {
         let voice = self.get_voice_from_midi_note(note_number);
-        
+
         if voice.kit_piece != DrumKitPiece::None {
             let mut hit = DrumHit {
                 voice,
@@ -275,35 +357,47 @@ impl DrumMidiDeviceConfiguration {
                 is_live,
                 dimension_value: 0.0,
             };
-            
+
             if is_live {
                 if hit.voice.kit_piece == DrumKitPiece::HiHat {
-                    hit.dimension_value = self.hi_hat_pedal_open + 
-                        (self.current_pedal_value * (self.hi_hat_pedal_closed - self.hi_hat_pedal_open));
+                    hit.dimension_value = self.hi_hat_pedal_open
+                        + (self.current_pedal_value
+                            * (self.hi_hat_pedal_closed - self.hi_hat_pedal_open));
                 } else if hit.voice.kit_piece == DrumKitPiece::Snare {
                     hit.dimension_value = self.snare_position_center;
                 }
             } else {
                 if hit.voice.kit_piece == DrumKitPiece::HiHat {
-                    hit.dimension_value = if hit.voice.articulation == DrumArticulation::HiHatOpen { 0.0 } else { 1.0 };
+                    hit.dimension_value = if hit.voice.articulation == DrumArticulation::HiHatOpen {
+                        0.0
+                    } else {
+                        1.0
+                    };
                 }
             }
-            
+
             Some(hit)
         } else {
             None
         }
     }
-    
-    pub fn handle_poly_pressure(&self, channel: i32, note_number: i32, pressure: f32, sample_offset: i32, is_live: bool) -> Option<DrumHit> {
+
+    pub fn handle_poly_pressure(
+        &self,
+        channel: i32,
+        note_number: i32,
+        pressure: f32,
+        sample_offset: i32,
+        is_live: bool,
+    ) -> Option<DrumHit> {
         let voice = self.get_voice_from_midi_note(note_number);
-        
+
         if voice.kit_piece != DrumKitPiece::None {
-            let ride_type = voice.kit_piece == DrumKitPiece::Ride || 
-                            voice.kit_piece == DrumKitPiece::Crash ||
-                            voice.kit_piece == DrumKitPiece::Crash2 ||
-                            voice.kit_piece == DrumKitPiece::Crash3;
-            
+            let ride_type = voice.kit_piece == DrumKitPiece::Ride
+                || voice.kit_piece == DrumKitPiece::Crash
+                || voice.kit_piece == DrumKitPiece::Crash2
+                || voice.kit_piece == DrumKitPiece::Crash3;
+
             if ride_type {
                 let mut hit = DrumHit {
                     voice: DrumVoice::new(voice.kit_piece, DrumArticulation::CymbalChoke),
@@ -314,7 +408,7 @@ impl DrumMidiDeviceConfiguration {
                 return Some(hit);
             }
         }
-        
+
         None
     }
 }
@@ -350,7 +444,7 @@ pub fn set_current_map(map: DrumMidiDeviceConfiguration) {
 pub struct NoteDetector {
     pub max_frequency: f64,
     pub current_pitch: f32,
-    
+
     sample_rate: i32,
     valid_pitch_ratio: f32,
 }
@@ -364,18 +458,18 @@ impl NoteDetector {
             valid_pitch_ratio: (2.0_f32).powf(0.5 / 12.0),
         }
     }
-    
+
     pub fn detect_note(&mut self, frequency: f64) -> bool {
         if frequency == 0.0 {
             return false;
         }
-        
+
         let min_freq = frequency / self.valid_pitch_ratio as f64;
         let max_freq = frequency * self.valid_pitch_ratio as f64;
-        
+
         self.current_pitch as f64 >= min_freq && self.current_pitch as f64 <= max_freq
     }
-    
+
     pub fn stop(&mut self) {
         // Cleanup
     }

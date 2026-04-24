@@ -3,8 +3,14 @@
 use crate::audio::{SharedSongPlayer, SongPlayer};
 use crate::camera::{Camera3D, FretCamera};
 use crate::midi::MidiHandler;
-use crate::song::{DrumArticulationSimple, DrumKitPieceSimple, SongBeat, SongChord, SongDrumNote, SongInstrumentType, SongKeyboardNote, SongNote, SongNoteTechnique};
-use crate::{DEFAULT_NOTE_DISPLAY_DISTANCE, DEFAULT_NOTE_DISPLAY_SECONDS, DRUM_NOTE_DISPLAY_DISTANCE, DRUM_NOTE_DISPLAY_SECONDS};
+use crate::song::{
+    DrumArticulationSimple, DrumKitPieceSimple, SongBeat, SongChord, SongDrumNote,
+    SongInstrumentType, SongKeyboardNote, SongNote, SongNoteTechnique,
+};
+use crate::{
+    DEFAULT_NOTE_DISPLAY_DISTANCE, DEFAULT_NOTE_DISPLAY_SECONDS, DRUM_NOTE_DISPLAY_DISTANCE,
+    DRUM_NOTE_DISPLAY_SECONDS,
+};
 use bytemuck::{Pod, Zeroable};
 use cgmath::{InnerSpace, Matrix4, Vector3, Vector4};
 use std::collections::{HashMap, HashSet};
@@ -159,7 +165,9 @@ impl Scene3D {
     }
 
     fn project_point(&self, point: Vector3<f32>) -> Option<[f32; 2]> {
-        let clip = self.get_projection_matrix() * self.get_view_matrix() * Vector4::new(point.x, point.y, point.z, 1.0);
+        let clip = self.get_projection_matrix()
+            * self.get_view_matrix()
+            * Vector4::new(point.x, point.y, point.z, 1.0);
         if clip.w <= 0.01 {
             return None;
         }
@@ -222,6 +230,66 @@ impl Scene3D {
                 tex_coords: [sprite.u1, sprite.v1],
             },
         ]);
+    }
+
+    fn push_world_nine_patch(
+        &self,
+        vertices: &mut Vec<SceneVertex>,
+        bottom_left: Vector3<f32>,
+        top_left: Vector3<f32>,
+        top_right: Vector3<f32>,
+        _bottom_right: Vector3<f32>,
+        color: [f32; 4],
+        sprite: SpriteRegion,
+    ) {
+        let x_tex_coords = [
+            sprite.u0,
+            (sprite.u0 + sprite.u1) * 0.5,
+            (sprite.u0 + sprite.u1) * 0.5,
+            sprite.u1,
+        ];
+        let y_tex_coords = [
+            sprite.v0,
+            (sprite.v0 + sprite.v1) * 0.5,
+            (sprite.v0 + sprite.v1) * 0.5,
+            sprite.v1,
+        ];
+        let patch_percents = [0.0, 0.05, 0.95, 1.0];
+        let top_left_to_top_right = top_right - top_left;
+        let top_left_to_bottom_left = bottom_left - top_left;
+
+        for x in 0..3 {
+            for y in 0..3 {
+                let patch_top_left = top_left
+                    + top_left_to_top_right * patch_percents[x]
+                    + top_left_to_bottom_left * patch_percents[y];
+                let patch_top_right = top_left
+                    + top_left_to_top_right * patch_percents[x + 1]
+                    + top_left_to_bottom_left * patch_percents[y];
+                let patch_bottom_left = top_left
+                    + top_left_to_top_right * patch_percents[x]
+                    + top_left_to_bottom_left * patch_percents[y + 1];
+                let patch_bottom_right = top_left
+                    + top_left_to_top_right * patch_percents[x + 1]
+                    + top_left_to_bottom_left * patch_percents[y + 1];
+
+                self.push_world_quad(
+                    vertices,
+                    patch_bottom_left,
+                    patch_top_left,
+                    patch_top_right,
+                    patch_bottom_right,
+                    color,
+                    SpriteRegion {
+                        u0: x_tex_coords[x],
+                        v0: y_tex_coords[y],
+                        u1: x_tex_coords[x + 1],
+                        v1: y_tex_coords[y + 1],
+                        ..sprite
+                    },
+                );
+            }
+        }
     }
 
     fn push_billboard(
@@ -330,7 +398,12 @@ impl ChartScene3D {
     pub fn current_playback_seconds(&self) -> f32 {
         self.player
             .as_ref()
-            .and_then(|player| player.lock().ok().map(|player| player.current_second))
+            .and_then(|player| {
+                player
+                    .lock()
+                    .ok()
+                    .map(|player| player.current_output_second())
+            })
             .unwrap_or(self.current_time)
     }
 
@@ -338,14 +411,22 @@ impl ChartScene3D {
         self.player.as_ref().cloned()
     }
 
-    pub fn get_start_note<T: SongEventTrait>(&self, time_offset: f32, min_length: f32, start_note_position: i32, notes: &[T]) -> i32 {
+    pub fn get_start_note<T: SongEventTrait>(
+        &self,
+        time_offset: f32,
+        min_length: f32,
+        start_note_position: i32,
+        notes: &[T],
+    ) -> i32 {
         if notes.is_empty() {
             return 0;
         }
 
         let mut position = start_note_position.clamp(0, notes.len() as i32 - 1) as usize;
         while position > 0 {
-            let end_time = notes[position].end_time().max(notes[position].time_offset() + min_length);
+            let end_time = notes[position]
+                .end_time()
+                .max(notes[position].time_offset() + min_length);
             if end_time < time_offset {
                 break;
             }
@@ -353,7 +434,9 @@ impl ChartScene3D {
         }
 
         while position < notes.len() {
-            let end_time = notes[position].end_time().max(notes[position].time_offset() + min_length);
+            let end_time = notes[position]
+                .end_time()
+                .max(notes[position].time_offset() + min_length);
             if end_time > time_offset {
                 break;
             }
@@ -363,7 +446,12 @@ impl ChartScene3D {
         position as i32
     }
 
-    pub fn get_end_note<T: SongEventTrait>(&self, start_position: i32, end_time: f32, notes: &[T]) -> i32 {
+    pub fn get_end_note<T: SongEventTrait>(
+        &self,
+        start_position: i32,
+        end_time: f32,
+        notes: &[T],
+    ) -> i32 {
         if notes.is_empty() {
             return 0;
         }
@@ -383,17 +471,32 @@ impl ChartScene3D {
         position as i32
     }
 
-    fn push_beat_lines(&mut self, vertices: &mut Vec<SceneVertex>, sprites: &SpriteLibrary, height_offset: f32, image_scale: f32) {
+    fn push_beat_lines(
+        &mut self,
+        vertices: &mut Vec<SceneVertex>,
+        sprites: &SpriteLibrary,
+        height_offset: f32,
+        image_scale: f32,
+    ) {
         let Some(player) = self.player.as_ref() else {
             return;
         };
 
-        let beats = player.lock().ok().map(|player| player.get_song_beats()).unwrap_or_default();
+        let beats = player
+            .lock()
+            .ok()
+            .map(|player| player.get_song_beats())
+            .unwrap_or_default();
         if beats.is_empty() {
             return;
         }
 
-        self.start_beat_position = self.get_start_note(self.current_time - self.current_time_offset, 0.0, self.start_beat_position, &beats);
+        self.start_beat_position = self.get_start_note(
+            self.current_time - self.current_time_offset,
+            0.0,
+            self.start_beat_position,
+            &beats,
+        );
         let line_sprite = sprites.sprite("HorizontalFretLine");
 
         let mut last_beat_time = None;
@@ -467,23 +570,39 @@ pub trait SongEventTrait {
 }
 
 impl SongEventTrait for SongBeat {
-    fn time_offset(&self) -> f32 { self.time_offset }
-    fn end_time(&self) -> f32 { self.time_offset }
+    fn time_offset(&self) -> f32 {
+        self.time_offset
+    }
+    fn end_time(&self) -> f32 {
+        self.time_offset
+    }
 }
 
 impl SongEventTrait for SongNote {
-    fn time_offset(&self) -> f32 { self.time_offset }
-    fn end_time(&self) -> f32 { self.end_time }
+    fn time_offset(&self) -> f32 {
+        self.time_offset
+    }
+    fn end_time(&self) -> f32 {
+        self.end_time
+    }
 }
 
 impl SongEventTrait for SongDrumNote {
-    fn time_offset(&self) -> f32 { self.time_offset }
-    fn end_time(&self) -> f32 { self.end_time }
+    fn time_offset(&self) -> f32 {
+        self.time_offset
+    }
+    fn end_time(&self) -> f32 {
+        self.end_time
+    }
 }
 
 impl SongEventTrait for SongKeyboardNote {
-    fn time_offset(&self) -> f32 { self.time_offset }
-    fn end_time(&self) -> f32 { self.end_time }
+    fn time_offset(&self) -> f32 {
+        self.time_offset
+    }
+    fn end_time(&self) -> f32 {
+        self.end_time
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -510,7 +629,11 @@ pub struct DrumPlayerScene3D {
 
 impl DrumPlayerScene3D {
     pub fn new(player: SharedSongPlayer) -> Self {
-        let num_notes = player.lock().ok().map(|player| player.get_drum_notes().len()).unwrap_or(0);
+        let num_notes = player
+            .lock()
+            .ok()
+            .map(|player| player.get_drum_notes().len())
+            .unwrap_or(0);
         let mut base = ChartScene3D::new(Some(player));
         base.current_time_offset = 0.35;
         base.note_display_distance = DRUM_NOTE_DISPLAY_DISTANCE;
@@ -538,8 +661,15 @@ impl DrumPlayerScene3D {
         lane * 15.0
     }
 
-    pub fn build_vertices(&mut self, current_time: f32, viewport_width: u32, viewport_height: u32, sprites: &SpriteLibrary) -> Vec<SceneVertex> {
-        self.base.begin_frame(current_time, viewport_width, viewport_height);
+    pub fn build_vertices(
+        &mut self,
+        current_time: f32,
+        viewport_width: u32,
+        viewport_height: u32,
+        sprites: &SpriteLibrary,
+    ) -> Vec<SceneVertex> {
+        self.base
+            .begin_frame(current_time, viewport_width, viewport_height);
         self.base.highway_start_x = 0.0;
         self.base.highway_end_x = self.get_lane_position(self.num_lanes as f32);
         self.update_camera();
@@ -558,19 +688,46 @@ impl DrumPlayerScene3D {
 
         let vertical_line = sprites.sprite("VerticalFretLine");
         for lane in 0..=self.num_lanes {
-            self.push_lane_timeline(&mut vertices, lane as f32, self.base.current_time - self.base.current_time_offset, self.base.end_time, [1.0, 1.0, 1.0, 0.35], vertical_line, 0.03);
+            self.push_lane_timeline(
+                &mut vertices,
+                lane as f32,
+                self.base.current_time - self.base.current_time_offset,
+                self.base.end_time,
+                [1.0, 1.0, 1.0, 0.35],
+                vertical_line,
+                0.03,
+            );
         }
 
         self.base.push_beat_lines(&mut vertices, sprites, 0.0, 0.08);
 
         if let Some(player) = self.base.player.as_ref() {
-            let notes = player.lock().ok().map(|player| player.get_drum_notes()).unwrap_or_default();
+            let notes = player
+                .lock()
+                .ok()
+                .map(|player| player.get_drum_notes())
+                .unwrap_or_default();
             if !notes.is_empty() {
-                self.start_note_position = self.base.get_start_note(self.base.current_time - 0.5, 0.0, self.start_note_position, &notes);
-                let last_note = self.base.get_end_note(self.start_note_position, self.base.end_time, &notes);
+                self.start_note_position = self.base.get_start_note(
+                    self.base.current_time - 0.5,
+                    0.0,
+                    self.start_note_position,
+                    &notes,
+                );
+                let last_note =
+                    self.base
+                        .get_end_note(self.start_note_position, self.base.end_time, &notes);
 
-                for (idx, note) in notes.iter().enumerate().take(last_note.max(0) as usize + 1).skip(self.start_note_position.max(0) as usize) {
-                    if note.time_offset <= self.base.current_time - self.detection_tolerance_secs && self.notes_detected[idx].is_none() && note.time_offset > self.base.score_start_secs {
+                for (idx, note) in notes
+                    .iter()
+                    .enumerate()
+                    .take(last_note.max(0) as usize + 1)
+                    .skip(self.start_note_position.max(0) as usize)
+                {
+                    if note.time_offset <= self.base.current_time - self.detection_tolerance_secs
+                        && self.notes_detected[idx].is_none()
+                        && note.time_offset > self.base.score_start_secs
+                    {
                         self.notes_detected[idx] = Some(f32::MAX);
                         self.base.num_notes_total += 1;
                     }
@@ -596,19 +753,46 @@ impl DrumPlayerScene3D {
         }
 
         let horizontal = sprites.sprite("HorizontalFretLine");
-        self.base.push_horizontal_line(&mut vertices, 0.0, self.get_lane_position(self.num_lanes as f32), self.base.start_time, 0.0, [1.0, 1.0, 1.0, 0.8], horizontal, 0.04);
+        self.base.push_horizontal_line(
+            &mut vertices,
+            0.0,
+            self.get_lane_position(self.num_lanes as f32),
+            self.base.start_time,
+            0.0,
+            [1.0, 1.0, 1.0, 0.8],
+            horizontal,
+            0.04,
+        );
         vertices
     }
 
     fn update_camera(&mut self) {
         let target_position = self.num_lanes as f32 / 2.0;
         self.position_lane = lerp(self.position_lane, target_position, 0.01);
-        let front_position = -((self.base.current_time - self.base.current_time_offset) * self.base.time_scale);
-        self.base.base.camera.position = Vector3::new(self.get_lane_position(self.position_lane), 150.0, front_position + self.camera_distance);
-        self.base.base.camera.set_look_at(Vector3::new(self.get_lane_position(self.position_lane), 0.0, self.base.base.camera.position.z - (self.base.note_display_distance * 0.55)));
+        let front_position =
+            -((self.base.current_time - self.base.current_time_offset) * self.base.time_scale);
+        self.base.base.camera.position = Vector3::new(
+            self.get_lane_position(self.position_lane),
+            150.0,
+            front_position + self.camera_distance,
+        );
+        self.base.base.camera.set_look_at(Vector3::new(
+            self.get_lane_position(self.position_lane),
+            0.0,
+            self.base.base.camera.position.z - (self.base.note_display_distance * 0.55),
+        ));
     }
 
-    fn push_lane_timeline(&self, vertices: &mut Vec<SceneVertex>, lane: f32, start_time: f32, end_time: f32, color: [f32; 4], sprite: SpriteRegion, image_scale: f32) {
+    fn push_lane_timeline(
+        &self,
+        vertices: &mut Vec<SceneVertex>,
+        lane: f32,
+        start_time: f32,
+        end_time: f32,
+        color: [f32; 4],
+        sprite: SpriteRegion,
+        image_scale: f32,
+    ) {
         let x = self.get_lane_position(lane);
         let start_z = -(start_time * self.base.time_scale);
         let end_z = -(end_time * self.base.time_scale);
@@ -624,7 +808,13 @@ impl DrumPlayerScene3D {
         );
     }
 
-    fn push_drum_note(&self, vertices: &mut Vec<SceneVertex>, note: &SongDrumNote, scale: f32, sprites: &SpriteLibrary) {
+    fn push_drum_note(
+        &self,
+        vertices: &mut Vec<SceneVertex>,
+        note: &SongDrumNote,
+        scale: f32,
+        sprites: &SpriteLibrary,
+    ) {
         if note.kit_piece == DrumKitPieceSimple::Kick {
             let sprite = sprites.sprite("HorizontalFretLine");
             self.base.push_horizontal_line(
@@ -664,18 +854,50 @@ impl DrumPlayerScene3D {
         };
 
         let sprite = sprites.sprite(sprite_name);
-        let center = Vector3::new(self.get_lane_position(lane), 0.0, -(note.time_offset * self.base.time_scale));
-        self.base.base.push_billboard(vertices, center, 0.08 * scale, [1.0, 1.0, 1.0, 1.0], sprite);
+        let center = Vector3::new(
+            self.get_lane_position(lane),
+            0.0,
+            -(note.time_offset * self.base.time_scale),
+        );
+        self.base
+            .base
+            .push_billboard(vertices, center, 0.08 * scale, [1.0, 1.0, 1.0, 1.0], sprite);
     }
 }
 
 impl MidiHandler for DrumPlayerScene3D {
-    fn handle_note_on(&mut self, channel: i32, note_number: i32, velocity: f32, sample_offset: i32) {
-        self.handle_drum_hit(DrumHit { channel, note_number, velocity, sample_offset, is_live: true, dimension_value: 0.0 });
+    fn handle_note_on(
+        &mut self,
+        channel: i32,
+        note_number: i32,
+        velocity: f32,
+        sample_offset: i32,
+    ) {
+        self.handle_drum_hit(DrumHit {
+            channel,
+            note_number,
+            velocity,
+            sample_offset,
+            is_live: true,
+            dimension_value: 0.0,
+        });
     }
 
-    fn handle_poly_pressure(&mut self, channel: i32, note_number: i32, pressure: f32, sample_offset: i32) {
-        self.handle_drum_hit(DrumHit { channel, note_number, velocity: pressure, sample_offset, is_live: true, dimension_value: 0.0 });
+    fn handle_poly_pressure(
+        &mut self,
+        channel: i32,
+        note_number: i32,
+        pressure: f32,
+        sample_offset: i32,
+    ) {
+        self.handle_drum_hit(DrumHit {
+            channel,
+            note_number,
+            velocity: pressure,
+            sample_offset,
+            is_live: true,
+            dimension_value: 0.0,
+        });
     }
 }
 
@@ -712,7 +934,11 @@ impl FretPlayerScene3D {
             .map(|player| {
                 (
                     player.get_instrument_notes().len(),
-                    if player.instrument_type == SongInstrumentType::BassGuitar { 4 } else { 6 },
+                    if player.instrument_type == SongInstrumentType::BassGuitar {
+                        4
+                    } else {
+                        6
+                    },
                 )
             })
             .unwrap_or((0, 6));
@@ -739,7 +965,14 @@ impl FretPlayerScene3D {
                 [1.00, 0.50, 0.00, 1.0],
                 [0.80, 0.00, 0.80, 1.0],
             ],
-            string_color_names: vec!["Green".into(), "Red".into(), "Yellow".into(), "Cyan".into(), "Orange".into(), "Purple".into()],
+            string_color_names: vec![
+                "Green".into(),
+                "Red".into(),
+                "Yellow".into(),
+                "Cyan".into(),
+                "Orange".into(),
+                "Purple".into(),
+            ],
             string_color_offset: 0,
             target_focus_fret: 2.0,
             fret_camera: FretCamera::new(),
@@ -754,8 +987,15 @@ impl FretPlayerScene3D {
         fret_position(fret)
     }
 
-    pub fn build_vertices(&mut self, current_time: f32, viewport_width: u32, viewport_height: u32, sprites: &SpriteLibrary) -> Vec<SceneVertex> {
-        self.base.begin_frame(current_time, viewport_width, viewport_height);
+    pub fn build_vertices(
+        &mut self,
+        current_time: f32,
+        viewport_width: u32,
+        viewport_height: u32,
+        sprites: &SpriteLibrary,
+    ) -> Vec<SceneVertex> {
+        self.base
+            .begin_frame(current_time, viewport_width, viewport_height);
         self.base.highway_start_x = self.get_fret_position(0.0);
         self.base.highway_end_x = self.get_fret_position(self.num_frets as f32);
         self.refresh_fret_window();
@@ -777,7 +1017,15 @@ impl FretPlayerScene3D {
         );
 
         for fret in 0..self.num_frets {
-            self.push_fret_timeline(&mut vertices, fret as f32, self.base.start_time, self.base.end_time, [1.0, 1.0, 1.0, 0.35], vertical, 0.03);
+            self.push_fret_timeline(
+                &mut vertices,
+                fret as f32,
+                self.base.start_time,
+                self.base.end_time,
+                [1.0, 1.0, 1.0, 0.35],
+                vertical,
+                0.03,
+            );
         }
 
         self.base.push_beat_lines(&mut vertices, sprites, 0.0, 0.08);
@@ -798,11 +1046,29 @@ impl FretPlayerScene3D {
         }
 
         for fret in 1..self.num_frets {
-            self.push_fret_marker(&mut vertices, fret as f32 - 1.0, self.base.start_time, self.get_string_height(0.0), self.get_string_height(self.num_strings as f32 - 1.0), [1.0, 1.0, 1.0, 0.35], vertical, 0.03);
+            self.push_fret_marker(
+                &mut vertices,
+                fret as f32 - 1.0,
+                self.base.start_time,
+                self.get_string_height(0.0),
+                self.get_string_height(self.num_strings as f32 - 1.0),
+                [1.0, 1.0, 1.0, 0.35],
+                vertical,
+                0.03,
+            );
         }
 
         if self.capo_fret != 0 {
-            self.push_fret_marker(&mut vertices, self.capo_fret as f32 - 0.1, self.base.start_time, self.get_string_height(-0.2), self.get_string_height(self.num_strings as f32 - 0.8), [1.0, 1.0, 1.0, 0.75], vertical, 0.08);
+            self.push_fret_marker(
+                &mut vertices,
+                self.capo_fret as f32 - 0.1,
+                self.base.start_time,
+                self.get_string_height(-0.2),
+                self.get_string_height(self.num_strings as f32 - 0.8),
+                [1.0, 1.0, 1.0, 0.75],
+                vertical,
+                0.08,
+            );
         }
 
         if self.display_notes {
@@ -819,18 +1085,33 @@ impl FretPlayerScene3D {
         let Some(player) = self.base.player.as_ref() else {
             return;
         };
-        let notes = player.lock().ok().map(|player| player.get_instrument_notes()).unwrap_or_default();
+        let notes = player
+            .lock()
+            .ok()
+            .map(|player| player.get_instrument_notes())
+            .unwrap_or_default();
         if notes.is_empty() {
             self.min_fret = 0.0;
             self.max_fret = 4.0;
             return;
         }
 
-        self.start_note_position = self.base.get_start_note(self.base.current_time, 1.0, self.start_note_position, &notes);
-        let end_position = self.base.get_end_note(self.start_note_position, self.base.end_time, &notes);
+        self.start_note_position = self.base.get_start_note(
+            self.base.current_time,
+            1.0,
+            self.start_note_position,
+            &notes,
+        );
+        let end_position =
+            self.base
+                .get_end_note(self.start_note_position, self.base.end_time, &notes);
         let mut first_future_hand_fret = None;
 
-        for note in notes.iter().take(end_position.max(0) as usize + 1).skip(self.start_note_position.max(0) as usize) {
+        for note in notes
+            .iter()
+            .take(end_position.max(0) as usize + 1)
+            .skip(self.start_note_position.max(0) as usize)
+        {
             if note.time_offset > self.base.end_time {
                 break;
             }
@@ -862,24 +1143,48 @@ impl FretPlayerScene3D {
         self.fret_camera.base.viewport_width = self.base.base.camera.viewport_width;
         self.fret_camera.base.viewport_height = self.base.base.camera.viewport_height;
         self.fret_camera.base.mirror_left_right = self.base.lefty_mode;
-        self.fret_camera.update(self.min_fret, self.max_fret, self.target_focus_fret, -(self.base.current_time * self.base.time_scale));
+        self.fret_camera.update(
+            self.min_fret,
+            self.max_fret,
+            self.target_focus_fret,
+            -(self.base.current_time * self.base.time_scale),
+        );
         self.base.base.camera = self.fret_camera.base.clone();
     }
 
-    fn push_notes(&mut self, vertices: &mut Vec<SceneVertex>, sprites: &SpriteLibrary, stem_sprite: SpriteRegion) {
+    fn push_notes(
+        &mut self,
+        vertices: &mut Vec<SceneVertex>,
+        sprites: &SpriteLibrary,
+        stem_sprite: SpriteRegion,
+    ) {
         let Some(player) = self.base.player.as_ref() else {
             return;
         };
-        let notes = player.lock().ok().map(|player| player.get_instrument_notes()).unwrap_or_default();
+        let notes = player
+            .lock()
+            .ok()
+            .map(|player| player.get_instrument_notes())
+            .unwrap_or_default();
         if notes.is_empty() {
             return;
         }
 
-        let chords = player.lock().ok().map(|player| player.get_chords()).unwrap_or_default();
+        let chords = player
+            .lock()
+            .ok()
+            .map(|player| player.get_chords())
+            .unwrap_or_default();
         let mut drawn_chords = HashSet::new();
 
-        let end_position = self.base.get_end_note(self.start_note_position, self.base.end_time, &notes);
-        for note in notes.iter().take(end_position.max(0) as usize + 1).skip(self.start_note_position.max(0) as usize) {
+        let end_position =
+            self.base
+                .get_end_note(self.start_note_position, self.base.end_time, &notes);
+        for note in notes
+            .iter()
+            .take(end_position.max(0) as usize + 1)
+            .skip(self.start_note_position.max(0) as usize)
+        {
             if note.time_offset > self.base.end_time {
                 break;
             }
@@ -907,7 +1212,14 @@ impl FretPlayerScene3D {
         }
     }
 
-    fn push_single_note(&self, vertices: &mut Vec<SceneVertex>, note: &SongNote, sprites: &SpriteLibrary, stem_sprite: SpriteRegion, is_ghost: bool) {
+    fn push_single_note(
+        &self,
+        vertices: &mut Vec<SceneVertex>,
+        note: &SongNote,
+        sprites: &SpriteLibrary,
+        stem_sprite: SpriteRegion,
+        is_ghost: bool,
+    ) {
         let string_offset = self.get_string_offset(note.string).max(0) as f32;
         let string_height = self.get_note_head_height(note, string_offset);
         let note_head_time = note.time_offset.max(self.base.current_time);
@@ -925,20 +1237,71 @@ impl FretPlayerScene3D {
 
         if note_end_time > note_head_time {
             if note.has_technique(SongNoteTechnique::SLIDE) && note.slide_fret >= 0 {
-                self.push_slide_tail(vertices, note, draw_fret, note_head_time, note_end_time.min(self.base.end_time), string_height, trail_sprite, string_color);
-            } else if note.cents_offsets.as_ref().is_some_and(|offsets| !offsets.is_empty()) {
-                self.push_bend_trail(vertices, note, string_offset, note_end_time.min(self.base.end_time), trail_sprite, string_color);
+                self.push_slide_tail(
+                    vertices,
+                    note,
+                    draw_fret,
+                    note_head_time,
+                    note_end_time.min(self.base.end_time),
+                    string_height,
+                    trail_sprite,
+                    string_color,
+                );
+            } else if note
+                .cents_offsets
+                .as_ref()
+                .is_some_and(|offsets| !offsets.is_empty())
+            {
+                self.push_bend_trail(
+                    vertices,
+                    note,
+                    string_offset,
+                    note_end_time.min(self.base.end_time),
+                    trail_sprite,
+                    string_color,
+                );
             } else if note.has_technique(SongNoteTechnique::VIBRATO) {
-                self.push_vibrato_trail(vertices, draw_fret, note_head_time, note_end_time.min(self.base.end_time), string_height, trail_sprite, string_color);
+                self.push_vibrato_trail(
+                    vertices,
+                    draw_fret,
+                    note_head_time,
+                    note_end_time.min(self.base.end_time),
+                    string_height,
+                    trail_sprite,
+                    string_color,
+                );
             } else {
-                self.push_fret_tail(vertices, note, draw_fret, note_head_time, note_end_time.min(self.base.end_time), string_height, trail_sprite, string_color);
+                self.push_fret_tail(
+                    vertices,
+                    note,
+                    draw_fret,
+                    note_head_time,
+                    note_end_time.min(self.base.end_time),
+                    string_height,
+                    trail_sprite,
+                    string_color,
+                );
             }
         }
 
-        self.push_fret_head(vertices, note, draw_fret, note_head_time, string_height, head_sprite, [1.0, 1.0, 1.0, if is_ghost { 0.4 } else { 1.0 }]);
+        self.push_fret_head(
+            vertices,
+            note,
+            draw_fret,
+            note_head_time,
+            string_height,
+            head_sprite,
+            [1.0, 1.0, 1.0, if is_ghost { 0.4 } else { 1.0 }],
+        );
 
         if let Some(modifier) = self.note_modifier_sprite(note, sprites) {
-            self.push_modifier(vertices, draw_fret, note_head_time, self.get_string_height(string_offset), modifier);
+            self.push_modifier(
+                vertices,
+                draw_fret,
+                note_head_time,
+                self.get_string_height(string_offset),
+                modifier,
+            );
         }
 
         if note.time_offset > self.base.current_time {
@@ -960,10 +1323,26 @@ impl FretPlayerScene3D {
             }
         }
 
-        self.push_fret_marker(vertices, draw_fret - 0.5, note_head_time, 0.0, self.get_string_height(string_offset), self.base.white_half_alpha, stem_sprite, 0.03);
+        self.push_fret_marker(
+            vertices,
+            draw_fret - 0.5,
+            note_head_time,
+            0.0,
+            self.get_string_height(string_offset),
+            self.base.white_half_alpha,
+            stem_sprite,
+            0.03,
+        );
     }
 
-    fn push_chord_notes(&self, vertices: &mut Vec<SceneVertex>, note: &SongNote, chord: &SongChord, sprites: &SpriteLibrary, stem_sprite: SpriteRegion) {
+    fn push_chord_notes(
+        &self,
+        vertices: &mut Vec<SceneVertex>,
+        note: &SongNote,
+        chord: &SongChord,
+        sprites: &SpriteLibrary,
+        stem_sprite: SpriteRegion,
+    ) {
         for (string_index, fret) in chord.frets.iter().enumerate() {
             if *fret < 0 || string_index >= self.num_strings as usize {
                 continue;
@@ -986,19 +1365,30 @@ impl FretPlayerScene3D {
         }
     }
 
-    fn push_chord_outline(&self, vertices: &mut Vec<SceneVertex>, note: &SongNote, chord: &SongChord, sprites: &SpriteLibrary) {
+    fn push_chord_outline(
+        &self,
+        vertices: &mut Vec<SceneVertex>,
+        note: &SongNote,
+        chord: &SongChord,
+        sprites: &SpriteLibrary,
+    ) {
         let sprite = sprites.sprite("ChordOutline");
         let time = note.time_offset.max(self.base.current_time);
         let z = -(time * self.base.time_scale);
         let start_x = self.get_fret_position((note.hand_fret - 1) as f32);
         let end_x = self.get_fret_position((note.hand_fret + 3) as f32);
-        let end_height = if time == self.base.current_time || note.time_offset > self.base.current_time {
-            self.get_string_height(self.num_strings as f32)
+        let end_height =
+            if time == self.base.current_time || note.time_offset > self.base.current_time {
+                self.get_string_height(self.num_strings as f32)
+            } else {
+                self.get_string_height(2.0)
+            };
+        let alpha = if note.has_technique(SongNoteTechnique::ACCENT) {
+            1.0
         } else {
-            self.get_string_height(2.0)
+            0.32
         };
-        let alpha = if note.has_technique(SongNoteTechnique::ACCENT) { 1.0 } else { 0.32 };
-        self.base.base.push_world_quad(
+        self.base.base.push_world_nine_patch(
             vertices,
             Vector3::new(start_x, 0.0, z),
             Vector3::new(start_x, end_height, z),
@@ -1008,13 +1398,22 @@ impl FretPlayerScene3D {
             sprite,
         );
 
-        if (note.has_technique(SongNoteTechnique::PALM_MUTE) || note.has_technique(SongNoteTechnique::FRET_HAND_MUTE)) && time > self.base.current_time {
+        if (note.has_technique(SongNoteTechnique::PALM_MUTE)
+            || note.has_technique(SongNoteTechnique::FRET_HAND_MUTE))
+            && time > self.base.current_time
+        {
             let mute_sprite = sprites.sprite(if note.has_technique(SongNoteTechnique::PALM_MUTE) {
                 "NotePalmMute"
             } else {
                 "NoteMute"
             });
-            self.push_modifier(vertices, note.hand_fret as f32 + 1.0, time, self.get_string_height(0.5), mute_sprite);
+            self.push_modifier(
+                vertices,
+                note.hand_fret as f32 + 1.0,
+                time,
+                self.get_string_height(0.5),
+                mute_sprite,
+            );
         }
 
         if let Some(name) = chord.name.as_deref().filter(|name| !name.is_empty()) {
@@ -1032,18 +1431,39 @@ impl FretPlayerScene3D {
         }
     }
 
-    fn push_finger_overlays(&self, vertices: &mut Vec<SceneVertex>, note: &SongNote, chord: &SongChord, sprites: &SpriteLibrary) {
+    fn push_finger_overlays(
+        &self,
+        vertices: &mut Vec<SceneVertex>,
+        note: &SongNote,
+        chord: &SongChord,
+        sprites: &SpriteLibrary,
+    ) {
         let sprite = sprites.sprite("FingerOutline");
         for (string_index, fret) in chord.frets.iter().enumerate() {
             if *fret < 0 || string_index >= self.num_strings as usize {
                 continue;
             }
-            let draw_fret = if *fret == 0 { note.hand_fret as f32 + 1.5 } else { *fret as f32 };
+            let draw_fret = if *fret == 0 {
+                note.hand_fret as f32 + 1.5
+            } else {
+                *fret as f32
+            };
             let string_offset = self.get_string_offset(string_index as i32).max(0) as f32;
             let time = self.base.current_time.max(note.time_offset);
-            self.push_modifier(vertices, draw_fret - 0.5, time, self.get_string_height(string_offset), sprite);
+            self.push_modifier(
+                vertices,
+                draw_fret - 0.5,
+                time,
+                self.get_string_height(string_offset),
+                sprite,
+            );
 
-            if let Some(finger) = chord.fingers.get(string_index).copied().filter(|finger| *finger > 0) {
+            if let Some(finger) = chord
+                .fingers
+                .get(string_index)
+                .copied()
+                .filter(|finger| *finger > 0)
+            {
                 let finger_text = finger.to_string();
                 self.push_vertical_text(
                     vertices,
@@ -1060,7 +1480,14 @@ impl FretPlayerScene3D {
         }
     }
 
-    fn push_modifier(&self, vertices: &mut Vec<SceneVertex>, fret_center: f32, time: f32, height: f32, sprite: SpriteRegion) {
+    fn push_modifier(
+        &self,
+        vertices: &mut Vec<SceneVertex>,
+        fret_center: f32,
+        time: f32,
+        height: f32,
+        sprite: SpriteRegion,
+    ) {
         let x = self.get_fret_position(fret_center);
         let z = -(time * self.base.time_scale);
         let half_width = sprite.width as f32 * 0.08;
@@ -1076,7 +1503,14 @@ impl FretPlayerScene3D {
         );
     }
 
-    fn push_note_shadow(&self, vertices: &mut Vec<SceneVertex>, draw_fret: f32, note_head_time: f32, string_offset: f32, sprites: &SpriteLibrary) {
+    fn push_note_shadow(
+        &self,
+        vertices: &mut Vec<SceneVertex>,
+        draw_fret: f32,
+        note_head_time: f32,
+        string_offset: f32,
+        sprites: &SpriteLibrary,
+    ) {
         let horizontal = sprites.sprite("HorizontalFretLine");
         self.base.push_horizontal_line(
             vertices,
@@ -1103,7 +1537,17 @@ impl FretPlayerScene3D {
         }
     }
 
-    fn push_slide_tail(&self, vertices: &mut Vec<SceneVertex>, note: &SongNote, draw_fret: f32, start_time: f32, end_time: f32, string_height: f32, sprite: SpriteRegion, color: [f32; 4]) {
+    fn push_slide_tail(
+        &self,
+        vertices: &mut Vec<SceneVertex>,
+        note: &SongNote,
+        draw_fret: f32,
+        start_time: f32,
+        end_time: f32,
+        string_height: f32,
+        sprite: SpriteRegion,
+        color: [f32; 4],
+    ) {
         self.push_image_trail(
             vertices,
             sprite,
@@ -1116,7 +1560,16 @@ impl FretPlayerScene3D {
         );
     }
 
-    fn push_vibrato_trail(&self, vertices: &mut Vec<SceneVertex>, draw_fret: f32, start_time: f32, end_time: f32, string_height: f32, sprite: SpriteRegion, color: [f32; 4]) {
+    fn push_vibrato_trail(
+        &self,
+        vertices: &mut Vec<SceneVertex>,
+        draw_fret: f32,
+        start_time: f32,
+        end_time: f32,
+        string_height: f32,
+        sprite: SpriteRegion,
+        color: [f32; 4],
+    ) {
         if end_time <= self.base.current_time || end_time <= start_time {
             return;
         }
@@ -1150,7 +1603,15 @@ impl FretPlayerScene3D {
         }
     }
 
-    fn push_bend_trail(&self, vertices: &mut Vec<SceneVertex>, note: &SongNote, string_offset: f32, end_time: f32, sprite: SpriteRegion, color: [f32; 4]) {
+    fn push_bend_trail(
+        &self,
+        vertices: &mut Vec<SceneVertex>,
+        note: &SongNote,
+        string_offset: f32,
+        end_time: f32,
+        sprite: SpriteRegion,
+        color: [f32; 4],
+    ) {
         let Some(cents_offsets) = note.cents_offsets.as_ref() else {
             return;
         };
@@ -1164,11 +1625,13 @@ impl FretPlayerScene3D {
         let mut last_height = base_height;
 
         for offset in cents_offsets {
-            let height = base_height + self.get_cents_height_offset(string_offset, offset.cents as f32);
+            let height =
+                base_height + self.get_cents_height_offset(string_offset, offset.cents as f32);
             if offset.time_offset >= self.base.current_time && offset.time_offset > last_time {
                 if last_time < self.base.current_time {
                     let duration = (offset.time_offset - last_time).max(f32::EPSILON);
-                    let progress = ((self.base.current_time - last_time) / duration).clamp(0.0, 1.0);
+                    let progress =
+                        ((self.base.current_time - last_time) / duration).clamp(0.0, 1.0);
                     last_height = lerp(last_height, height, progress);
                     last_time = self.base.current_time;
                 }
@@ -1208,7 +1671,11 @@ impl FretPlayerScene3D {
                 color,
                 0.03,
                 &[
-                    Vector3::new(fret_center, last_height, last_time.max(self.base.current_time)),
+                    Vector3::new(
+                        fret_center,
+                        last_height,
+                        last_time.max(self.base.current_time),
+                    ),
                     Vector3::new(fret_center, last_height, end_time),
                 ],
             );
@@ -1245,7 +1712,16 @@ impl FretPlayerScene3D {
         }
     }
 
-    fn push_fret_timeline(&self, vertices: &mut Vec<SceneVertex>, fret: f32, start_time: f32, end_time: f32, color: [f32; 4], sprite: SpriteRegion, image_scale: f32) {
+    fn push_fret_timeline(
+        &self,
+        vertices: &mut Vec<SceneVertex>,
+        fret: f32,
+        start_time: f32,
+        end_time: f32,
+        color: [f32; 4],
+        sprite: SpriteRegion,
+        image_scale: f32,
+    ) {
         let x = self.get_fret_position(fret);
         let start_z = -(start_time * self.base.time_scale);
         let end_z = -(end_time * self.base.time_scale);
@@ -1261,7 +1737,17 @@ impl FretPlayerScene3D {
         );
     }
 
-    fn push_fret_marker(&self, vertices: &mut Vec<SceneVertex>, fret_center: f32, time: f32, start_height: f32, end_height: f32, color: [f32; 4], sprite: SpriteRegion, image_scale: f32) {
+    fn push_fret_marker(
+        &self,
+        vertices: &mut Vec<SceneVertex>,
+        fret_center: f32,
+        time: f32,
+        start_height: f32,
+        end_height: f32,
+        color: [f32; 4],
+        sprite: SpriteRegion,
+        image_scale: f32,
+    ) {
         let x = self.get_fret_position(fret_center);
         let z = -(time * self.base.time_scale);
         let half_width = sprite.width as f32 * image_scale;
@@ -1276,7 +1762,17 @@ impl FretPlayerScene3D {
         );
     }
 
-    fn push_fret_tail(&self, vertices: &mut Vec<SceneVertex>, _note: &SongNote, draw_fret: f32, start_time: f32, end_time: f32, string_height: f32, sprite: SpriteRegion, color: [f32; 4]) {
+    fn push_fret_tail(
+        &self,
+        vertices: &mut Vec<SceneVertex>,
+        _note: &SongNote,
+        draw_fret: f32,
+        start_time: f32,
+        end_time: f32,
+        string_height: f32,
+        sprite: SpriteRegion,
+        color: [f32; 4],
+    ) {
         let fret_center = draw_fret - 0.5;
         let x = self.get_fret_position(fret_center);
         let half_width = sprite.width as f32 * 0.03;
@@ -1293,7 +1789,16 @@ impl FretPlayerScene3D {
         );
     }
 
-    fn push_fret_head(&self, vertices: &mut Vec<SceneVertex>, note: &SongNote, draw_fret: f32, time: f32, string_height: f32, sprite: SpriteRegion, color: [f32; 4]) {
+    fn push_fret_head(
+        &self,
+        vertices: &mut Vec<SceneVertex>,
+        note: &SongNote,
+        draw_fret: f32,
+        time: f32,
+        string_height: f32,
+        sprite: SpriteRegion,
+        color: [f32; 4],
+    ) {
         let z = -(time * self.base.time_scale);
         let half_height = sprite.height as f32 * if note.fret == 0 { 0.04 } else { 0.08 };
 
@@ -1396,19 +1901,30 @@ impl FretPlayerScene3D {
     }
 
     fn get_string_color(&self, string_index: usize) -> [f32; 4] {
-        let index = (string_index + self.string_color_offset as usize).min(self.string_colors.len() - 1);
+        let index =
+            (string_index + self.string_color_offset as usize).min(self.string_colors.len() - 1);
         self.string_colors[index]
     }
 
     fn note_head_sprite_name(&self, string_index: usize) -> String {
-        format!("Guitar{}", self.string_color_names[string_index.min(self.string_color_names.len() - 1)])
+        format!(
+            "Guitar{}",
+            self.string_color_names[string_index.min(self.string_color_names.len() - 1)]
+        )
     }
 
     fn note_trail_sprite_name(&self, string_index: usize) -> String {
-        format!("NoteTrail{}", self.string_color_names[string_index.min(self.string_color_names.len() - 1)])
+        format!(
+            "NoteTrail{}",
+            self.string_color_names[string_index.min(self.string_color_names.len() - 1)]
+        )
     }
 
-    fn note_modifier_sprite(&self, note: &SongNote, sprites: &SpriteLibrary) -> Option<SpriteRegion> {
+    fn note_modifier_sprite(
+        &self,
+        note: &SongNote,
+        sprites: &SpriteLibrary,
+    ) -> Option<SpriteRegion> {
         let name = if note.has_technique(SongNoteTechnique::HAMMER_ON) {
             Some("NoteHammerOn")
         } else if note.has_technique(SongNoteTechnique::PULL_OFF) {
@@ -1433,7 +1949,11 @@ impl FretPlayerScene3D {
             return note.hand_fret as f32 + 1.5;
         }
 
-        if note.has_technique(SongNoteTechnique::SLIDE) && note.slide_fret >= 0 && note.time_length > 0.0 && ref_time > note.time_offset {
+        if note.has_technique(SongNoteTechnique::SLIDE)
+            && note.slide_fret >= 0
+            && note.time_length > 0.0
+            && ref_time > note.time_offset
+        {
             let progress = ((ref_time - note.time_offset) / note.time_length).clamp(0.0, 1.0);
             return lerp(note.fret as f32, note.slide_fret as f32, progress);
         }
@@ -1449,7 +1969,9 @@ impl FretPlayerScene3D {
             color[2] = lerp(color[2], 1.0, 0.75);
         }
 
-        if note.has_technique(SongNoteTechnique::PALM_MUTE) || note.has_technique(SongNoteTechnique::FRET_HAND_MUTE) {
+        if note.has_technique(SongNoteTechnique::PALM_MUTE)
+            || note.has_technique(SongNoteTechnique::FRET_HAND_MUTE)
+        {
             color[0] *= 0.55;
             color[1] *= 0.55;
             color[2] *= 0.55;
@@ -1510,7 +2032,10 @@ impl FretPlayerScene3D {
             }
         }
 
-        cents_offsets.last().map(|offset| offset.cents as f32).unwrap_or(0.0)
+        cents_offsets
+            .last()
+            .map(|offset| offset.cents as f32)
+            .unwrap_or(0.0)
     }
 }
 
@@ -1561,8 +2086,15 @@ impl KeysPlayerScene3D {
         }
     }
 
-    pub fn build_vertices(&mut self, current_time: f32, viewport_width: u32, viewport_height: u32, sprites: &SpriteLibrary) -> Vec<SceneVertex> {
-        self.base.begin_frame(current_time, viewport_width, viewport_height);
+    pub fn build_vertices(
+        &mut self,
+        current_time: f32,
+        viewport_width: u32,
+        viewport_height: u32,
+        sprites: &SpriteLibrary,
+    ) -> Vec<SceneVertex> {
+        self.base
+            .begin_frame(current_time, viewport_width, viewport_height);
         self.base.highway_start_x = self.get_key_position(self.min_key as f32);
         self.base.highway_end_x = self.get_key_position(self.max_key as f32 + 2.0);
         self.update_camera();
@@ -1571,26 +2103,66 @@ impl KeysPlayerScene3D {
         let vertical = sprites.sprite("VerticalFretLine");
         for key in self.min_key..=(self.max_key + 2) {
             if self.scale_white_black[(key - self.min_key) as usize % 12] == 0 {
-                self.push_key_timeline(&mut vertices, key as f32, self.base.start_time, self.base.end_time, [1.0, 1.0, 1.0, 0.35], vertical, 0.03);
+                self.push_key_timeline(
+                    &mut vertices,
+                    key as f32,
+                    self.base.start_time,
+                    self.base.end_time,
+                    [1.0, 1.0, 1.0, 0.35],
+                    vertical,
+                    0.03,
+                );
             }
         }
 
         self.base.push_beat_lines(&mut vertices, sprites, 0.0, 0.08);
 
         if let Some(player) = self.base.player.as_ref() {
-            let notes = player.lock().ok().map(|player| player.get_keyboard_notes()).unwrap_or_default();
+            let notes = player
+                .lock()
+                .ok()
+                .map(|player| player.get_keyboard_notes())
+                .unwrap_or_default();
             if !notes.is_empty() {
-                self.start_note_position = self.base.get_start_note(self.base.current_time, 0.15, self.start_note_position, &notes);
-                let end_position = self.base.get_end_note(self.start_note_position, self.base.end_time, &notes);
+                self.start_note_position = self.base.get_start_note(
+                    self.base.current_time,
+                    0.15,
+                    self.start_note_position,
+                    &notes,
+                );
+                let end_position =
+                    self.base
+                        .get_end_note(self.start_note_position, self.base.end_time, &notes);
 
-                for note in notes.iter().take(end_position.max(0) as usize + 1).skip(self.start_note_position.max(0) as usize) {
-                    if note.note < self.min_key || note.note > self.max_key || note.time_offset > self.base.end_time {
+                for note in notes
+                    .iter()
+                    .take(end_position.max(0) as usize + 1)
+                    .skip(self.start_note_position.max(0) as usize)
+                {
+                    if note.note < self.min_key
+                        || note.note > self.max_key
+                        || note.time_offset > self.base.end_time
+                    {
                         continue;
                     }
 
-                    let is_white = self.scale_white_black[(note.note - self.min_key) as usize % 12] == 0;
-                    let sprite = sprites.sprite(if is_white { "NoteTrailWhite" } else { "NoteTrailBlack" });
-                    self.push_key_tail(&mut vertices, note.note as f32 + 0.5, note.time_offset.max(self.base.current_time), note.end_time, 0.0, [1.0, 1.0, 1.0, 1.0], sprite, 0.06);
+                    let is_white =
+                        self.scale_white_black[(note.note - self.min_key) as usize % 12] == 0;
+                    let sprite = sprites.sprite(if is_white {
+                        "NoteTrailWhite"
+                    } else {
+                        "NoteTrailBlack"
+                    });
+                    self.push_key_tail(
+                        &mut vertices,
+                        note.note as f32 + 0.5,
+                        note.time_offset.max(self.base.current_time),
+                        note.end_time,
+                        0.0,
+                        [1.0, 1.0, 1.0, 1.0],
+                        sprite,
+                        0.06,
+                    );
                 }
             }
         }
@@ -1604,11 +2176,29 @@ impl KeysPlayerScene3D {
         let target_position_key = (self.max_key + self.min_key) as f32 * 0.5;
         self.position_key = lerp(self.position_key, target_position_key, 0.01);
         self.camera_distance = lerp(self.camera_distance, self.target_camera_distance, 0.01);
-        self.base.base.camera.position = Vector3::new(self.get_key_position(self.position_key), 50.0, -(self.base.current_time * self.base.time_scale) + self.camera_distance);
-        self.base.base.camera.set_look_at(Vector3::new(self.get_key_position(self.position_key), 0.0, self.base.base.camera.position.z - (self.base.note_display_seconds * self.base.time_scale) * 0.3));
+        self.base.base.camera.position = Vector3::new(
+            self.get_key_position(self.position_key),
+            50.0,
+            -(self.base.current_time * self.base.time_scale) + self.camera_distance,
+        );
+        self.base.base.camera.set_look_at(Vector3::new(
+            self.get_key_position(self.position_key),
+            0.0,
+            self.base.base.camera.position.z
+                - (self.base.note_display_seconds * self.base.time_scale) * 0.3,
+        ));
     }
 
-    fn push_key_timeline(&self, vertices: &mut Vec<SceneVertex>, key_center: f32, start_time: f32, end_time: f32, color: [f32; 4], sprite: SpriteRegion, image_scale: f32) {
+    fn push_key_timeline(
+        &self,
+        vertices: &mut Vec<SceneVertex>,
+        key_center: f32,
+        start_time: f32,
+        end_time: f32,
+        color: [f32; 4],
+        sprite: SpriteRegion,
+        image_scale: f32,
+    ) {
         let x = self.get_key_position(key_center);
         let start_z = -(start_time * self.base.time_scale);
         let end_z = -(end_time * self.base.time_scale);
@@ -1624,7 +2214,17 @@ impl KeysPlayerScene3D {
         );
     }
 
-    fn push_key_tail(&self, vertices: &mut Vec<SceneVertex>, key_center: f32, start_time: f32, end_time: f32, height_offset: f32, color: [f32; 4], sprite: SpriteRegion, image_scale: f32) {
+    fn push_key_tail(
+        &self,
+        vertices: &mut Vec<SceneVertex>,
+        key_center: f32,
+        start_time: f32,
+        end_time: f32,
+        height_offset: f32,
+        color: [f32; 4],
+        sprite: SpriteRegion,
+        image_scale: f32,
+    ) {
         let x = self.get_key_position(key_center);
         let half_width = sprite.width as f32 * image_scale;
         let start_z = -(start_time * self.base.time_scale);
@@ -1679,11 +2279,23 @@ impl PlayerScene3D {
         }
     }
 
-    pub fn build_vertices(&mut self, current_time: f32, viewport_width: u32, viewport_height: u32, sprites: &SpriteLibrary) -> Vec<SceneVertex> {
+    pub fn build_vertices(
+        &mut self,
+        current_time: f32,
+        viewport_width: u32,
+        viewport_height: u32,
+        sprites: &SpriteLibrary,
+    ) -> Vec<SceneVertex> {
         match self {
-            PlayerScene3D::Fret(scene) => scene.build_vertices(current_time, viewport_width, viewport_height, sprites),
-            PlayerScene3D::Drum(scene) => scene.build_vertices(current_time, viewport_width, viewport_height, sprites),
-            PlayerScene3D::Keys(scene) => scene.build_vertices(current_time, viewport_width, viewport_height, sprites),
+            PlayerScene3D::Fret(scene) => {
+                scene.build_vertices(current_time, viewport_width, viewport_height, sprites)
+            }
+            PlayerScene3D::Drum(scene) => {
+                scene.build_vertices(current_time, viewport_width, viewport_height, sprites)
+            }
+            PlayerScene3D::Keys(scene) => {
+                scene.build_vertices(current_time, viewport_width, viewport_height, sprites)
+            }
         }
     }
 }

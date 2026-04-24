@@ -1,5 +1,5 @@
 //! Song data structures module
-//! 
+//!
 //! Provides data structures for songs, notes, and song indexing.
 
 use serde::{Deserialize, Serialize};
@@ -40,7 +40,7 @@ impl SongIndexEntry {
             stats: Vec::new(),
         }
     }
-    
+
     pub fn has_tag(&self, tag: &str) -> bool {
         for stat in &self.stats {
             if let Some(s) = stat {
@@ -72,19 +72,19 @@ pub struct SongIndex {
 impl SongIndex {
     pub fn new(base_path: Option<&str>) -> Self {
         let base = base_path.map(|s| s.to_string());
-        
+
         Self {
             songs: Vec::new(),
             base_path: base.clone(),
             stats: Vec::new(),
         }
     }
-    
+
     pub fn load(base_path: &str, force_rescan: bool) -> std::io::Result<Self> {
         let mut index = Self::new(Some(base_path));
-        
+
         let index_file = Path::new(base_path).join("index.json");
-        
+
         if index_file.exists() && !force_rescan {
             if let Ok(contents) = fs::read_to_string(&index_file) {
                 if let Ok(songs) = serde_json::from_str::<Vec<SongIndexEntry>>(&contents) {
@@ -95,13 +95,13 @@ impl SongIndex {
             index.scan_folder(base_path);
             index.save_index()?;
         }
-        
+
         Ok(index)
     }
-    
+
     fn scan_folder(&mut self, folder_path: &str) {
         let path = Path::new(folder_path);
-        
+
         if let Ok(entries) = fs::read_dir(path) {
             for entry in entries.flatten() {
                 let path = entry.path();
@@ -114,7 +114,8 @@ impl SongIndex {
                                     song_name: song_data.song_name,
                                     artist_name: song_data.artist_name,
                                     album_name: song_data.album_name,
-                                    folder_path: path.file_name()
+                                    folder_path: path
+                                        .file_name()
                                         .and_then(|n| n.to_str())
                                         .unwrap_or("")
                                         .to_string(),
@@ -135,7 +136,7 @@ impl SongIndex {
             }
         }
     }
-    
+
     fn save_index(&self) -> std::io::Result<()> {
         if let Some(ref base) = self.base_path {
             let index_file = Path::new(base).join("index.json");
@@ -144,10 +145,13 @@ impl SongIndex {
         }
         Ok(())
     }
-    
+
     pub fn get_song_path(&self, entry: &SongIndexEntry) -> String {
         if let Some(ref base) = self.base_path {
-            Path::new(base).join(&entry.folder_path).to_string_lossy().to_string()
+            Path::new(base)
+                .join(&entry.folder_path)
+                .to_string_lossy()
+                .to_string()
         } else {
             entry.folder_path.clone()
         }
@@ -172,7 +176,7 @@ impl SongStatsEntry {
             tags: None,
         }
     }
-    
+
     pub fn add_tag(&mut self, tag: &str) {
         if self.tags.is_none() {
             self.tags = Some(Vec::new());
@@ -183,7 +187,7 @@ impl SongStatsEntry {
             }
         }
     }
-    
+
     pub fn remove_tag(&mut self, tag: &str) {
         if let Some(ref mut tags) = self.tags {
             tags.retain(|t| t != tag);
@@ -202,9 +206,7 @@ pub struct SongStats {
 
 impl SongStats {
     pub fn new() -> Self {
-        Self {
-            songs: Vec::new(),
-        }
+        Self { songs: Vec::new() }
     }
 }
 
@@ -301,9 +303,12 @@ impl SongTuning {
             string_semitone_offsets: Vec::new(),
         }
     }
-    
+
     pub fn is_offset_from_standard(&self) -> bool {
-        self.string_semitone_offsets.get(1).map(|&v| v != 0).unwrap_or(false)
+        self.string_semitone_offsets
+            .get(1)
+            .map(|&v| v != 0)
+            .unwrap_or(false)
     }
 }
 
