@@ -5,6 +5,7 @@
 
 use std::collections::HashMap;
 use std::fmt;
+use std::sync::{OnceLock, RwLock};
 
 /// Drum kit piece enumeration
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -342,10 +343,10 @@ impl DrumMidiDeviceConfiguration {
 
     pub fn handle_note_on(
         &self,
-        channel: i32,
+        _channel: i32,
         note_number: i32,
         velocity: f32,
-        sample_offset: i32,
+        _sample_offset: i32,
         is_live: bool,
     ) -> Option<DrumHit> {
         let voice = self.get_voice_from_midi_note(note_number);
@@ -384,10 +385,10 @@ impl DrumMidiDeviceConfiguration {
 
     pub fn handle_poly_pressure(
         &self,
-        channel: i32,
+        _channel: i32,
         note_number: i32,
         pressure: f32,
-        sample_offset: i32,
+        _sample_offset: i32,
         is_live: bool,
     ) -> Option<DrumHit> {
         let voice = self.get_voice_from_midi_note(note_number);
@@ -399,7 +400,7 @@ impl DrumMidiDeviceConfiguration {
                 || voice.kit_piece == DrumKitPiece::Crash3;
 
             if ride_type {
-                let mut hit = DrumHit {
+                let hit = DrumHit {
                     voice: DrumVoice::new(voice.kit_piece, DrumArticulation::CymbalChoke),
                     velocity: pressure,
                     is_live,
@@ -420,22 +421,24 @@ impl Default for DrumMidiDeviceConfiguration {
 }
 
 /// Current map for MIDI device configuration
-pub static mut CURRENT_MAP: Option<DrumMidiDeviceConfiguration> = None;
+static CURRENT_MAP: OnceLock<RwLock<DrumMidiDeviceConfiguration>> = OnceLock::new();
+
+fn current_map_lock() -> &'static RwLock<DrumMidiDeviceConfiguration> {
+    CURRENT_MAP.get_or_init(|| RwLock::new(DrumMidiDeviceConfiguration::generic()))
+}
 
 /// Get the current MIDI map
 pub fn get_current_map() -> DrumMidiDeviceConfiguration {
-    unsafe {
-        match CURRENT_MAP.as_ref() {
-            Some(map) => map.clone(),
-            None => DrumMidiDeviceConfiguration::generic(),
-        }
-    }
+    current_map_lock()
+        .read()
+        .map(|map| map.clone())
+        .unwrap_or_else(|_| DrumMidiDeviceConfiguration::generic())
 }
 
 /// Set the current MIDI map
 pub fn set_current_map(map: DrumMidiDeviceConfiguration) {
-    unsafe {
-        CURRENT_MAP = Some(map);
+    if let Ok(mut current_map) = current_map_lock().write() {
+        *current_map = map;
     }
 }
 
@@ -445,16 +448,14 @@ pub struct NoteDetector {
     pub max_frequency: f64,
     pub current_pitch: f32,
 
-    sample_rate: i32,
     valid_pitch_ratio: f32,
 }
 
 impl NoteDetector {
-    pub fn new(sample_rate: i32) -> Self {
+    pub fn new(_sample_rate: i32) -> Self {
         Self {
             max_frequency: 2637.0,
             current_pitch: 0.0,
-            sample_rate,
             valid_pitch_ratio: (2.0_f32).powf(0.5 / 12.0),
         }
     }

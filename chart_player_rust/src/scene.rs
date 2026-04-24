@@ -917,7 +917,6 @@ pub struct FretPlayerScene3D {
     num_strings: i32,
     min_fret: f32,
     max_fret: f32,
-    notes_detected: Vec<i8>,
     start_note_position: i32,
     string_colors: [[f32; 4]; 6],
     string_color_names: Vec<String>,
@@ -928,7 +927,7 @@ pub struct FretPlayerScene3D {
 
 impl FretPlayerScene3D {
     pub fn new(player: SharedSongPlayer) -> Self {
-        let (instrument_notes_len, num_strings) = player
+        let (_, num_strings) = player
             .lock()
             .ok()
             .map(|player| {
@@ -955,7 +954,6 @@ impl FretPlayerScene3D {
             num_strings,
             min_fret: 0.0,
             max_fret: 4.0,
-            notes_detected: vec![0; instrument_notes_len],
             start_note_position: 0,
             string_colors: [
                 [0.10, 0.80, 0.00, 1.0],

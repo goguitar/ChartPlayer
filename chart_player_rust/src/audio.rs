@@ -92,7 +92,7 @@ impl Debug for VorbisMixer {
 }
 
 impl VorbisMixer {
-    pub fn new(path: &str) -> std::io::Result<Self> {
+    pub fn new(_path: &str) -> std::io::Result<Self> {
         Ok(Self {
             sample_rate: 48000,
             channels: 2,
@@ -346,7 +346,7 @@ impl WdlResampler {
                     let a = self.rs_in_buf[in_ptr + c];
                     let b = self.rs_in_buf[in_ptr + nch as usize + c];
                     out_buffer[out_ptr + c] =
-                        (a as f32 * (1.0 - frac) as f32 + b as f32 * frac as f32);
+                        a as f32 * (1.0 - frac) as f32 + b as f32 * frac as f32;
                 }
 
                 out_ptr += nch as usize;
@@ -371,6 +371,7 @@ impl Default for WdlResampler {
 }
 
 /// IIR filter for WDL resampler
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 struct WdlResamplerIirFilter {
     fpos: f64,
@@ -382,6 +383,7 @@ struct WdlResamplerIirFilter {
     hist: Vec<[f64; 4]>,
 }
 
+#[allow(dead_code)]
 impl WdlResamplerIirFilter {
     fn new() -> Self {
         Self {
@@ -606,7 +608,9 @@ pub struct SongPlayer {
     pub drum_notes: Vec<SongDrumNote>,
     pub keyboard_notes: Vec<SongKeyboardNote>,
 
+    #[allow(dead_code)]
     vorbis_mixer: Option<VorbisMixer>,
+    #[allow(dead_code)]
     resampler: WdlResampler,
     seek_time: Option<f32>,
     total_samples: i64,

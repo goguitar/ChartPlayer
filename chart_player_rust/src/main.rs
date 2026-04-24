@@ -12,10 +12,11 @@ use chart_player::{
 use image::GenericImageView;
 use wgpu::util::DeviceExt;
 use winit::dpi::{LogicalSize, PhysicalSize};
-use winit::event::{ElementState, Event, WindowEvent};
-use winit::event_loop::EventLoop;
+use winit::application::ApplicationHandler;
+use winit::event::{ElementState, WindowEvent};
+use winit::event_loop::{ActiveEventLoop, EventLoop};
 use winit::keyboard::{KeyCode, PhysicalKey};
-use winit::window::Window;
+use winit::window::{Window, WindowId};
 
 const SHADER: &str = r#"
 struct VertexInput {
@@ -560,35 +561,105 @@ fn main() -> Result<()> {
     println!("ChartPlayer v{}\n", VERSION);
 
     let event_loop = EventLoop::new().context("failed to create event loop")?;
-    let window = Arc::new(
-        event_loop
-            .create_window(
-                Window::default_attributes()
-                    .with_title("CHARTPLAYER")
-                    .with_inner_size(LogicalSize::new(1280.0, 720.0)),
-            )
-            .context("failed to create window")?,
-    );
+    let mut app = ChartPlayerApp::default();
+    event_loop.run_app(&mut app)?;
 
-    let mut renderer = pollster::block_on(Renderer::new(window.clone()))?;
-    let mut audio_output = renderer
-        .current_player_handle()
-        .map(AudioOutput::from_shared)
-        .transpose()
-        .map_err(|err| anyhow::anyhow!(err))?;
-    let size = window.inner_size();
-    println!("Window: {}x{}", size.width, size.height);
-    println!("Running - close window to exit");
-    println!("Scene keys: 1=fretboard 2=drums 3=keys\n");
-    window.set_title(&format!("CHARTPLAYER - {}", renderer.scene_name()));
+    Ok(())
+}
 
-    let window_id = window.id();
-    event_loop.run(move |event, target| match event {
-        Event::WindowEvent {
-            window_id: current_window_id,
-            event,
-        } if current_window_id == window_id => match event {
-            WindowEvent::CloseRequested => target.exit(),
+#[derive(Default)]
+struct ChartPlayerApp {
+    window: Option<Arc<Window>>,
+    renderer: Option<Renderer>,
+    audio_output: Option<AudioOutput>,
+}
+
+impl ChartPlayerApp {
+    fn reset_audio_output(&mut self) {
+        let Some(renderer) = self.renderer.as_ref() else {
+            self.audio_output = None;
+            return;
+        };
+
+        self.audio_output = match renderer.current_player_handle() {
+            Some(player) => match AudioOutput::from_shared(player) {
+                Ok(output) => Some(output),
+                Err(err) => {
+                    eprintln!("audio disabled: {err:#}");
+                    None
+                }
+            },
+            None => None,
+        };
+    }
+
+    fn update_window_title(&self) {
+        let (Some(window), Some(renderer)) = (self.window.as_ref(), self.renderer.as_ref()) else {
+            return;
+        };
+
+        window.set_title(&format!("CHARTPLAYER - {}", renderer.scene_name()));
+    }
+}
+
+impl ApplicationHandler for ChartPlayerApp {
+    fn resumed(&mut self, event_loop: &ActiveEventLoop) {
+        if self.window.is_some() {
+            return;
+        }
+
+        let window = match event_loop.create_window(
+            Window::default_attributes()
+                .with_title("CHARTPLAYER")
+                .with_inner_size(LogicalSize::new(1280.0, 720.0)),
+        ) {
+            Ok(window) => Arc::new(window),
+            Err(err) => {
+                eprintln!("failed to create window: {err:#}");
+                event_loop.exit();
+                return;
+            }
+        };
+
+        let renderer = match pollster::block_on(Renderer::new(window.clone())) {
+            Ok(renderer) => renderer,
+            Err(err) => {
+                eprintln!("failed to initialize renderer: {err:#}");
+                event_loop.exit();
+                return;
+            }
+        };
+
+        let size = window.inner_size();
+        println!("Window: {}x{}", size.width, size.height);
+        println!("Running - close window to exit");
+        println!("Scene keys: 1=fretboard 2=drums 3=keys\n");
+
+        self.window = Some(window);
+        self.renderer = Some(renderer);
+        self.reset_audio_output();
+        self.update_window_title();
+    }
+
+    fn window_event(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        window_id: WindowId,
+        event: WindowEvent,
+    ) {
+        let Some(window) = self.window.as_ref() else {
+            return;
+        };
+        if window.id() != window_id {
+            return;
+        }
+
+        let Some(renderer) = self.renderer.as_mut() else {
+            return;
+        };
+
+        match event {
+            WindowEvent::CloseRequested => event_loop.exit(),
             WindowEvent::Resized(size) => renderer.resize(size),
             WindowEvent::KeyboardInput { event, .. } => {
                 if event.state == ElementState::Pressed && !event.repeat {
@@ -596,31 +667,25 @@ fn main() -> Result<()> {
                         PhysicalKey::Code(KeyCode::Digit1) => renderer.select_scene(0),
                         PhysicalKey::Code(KeyCode::Digit2) => renderer.select_scene(1),
                         PhysicalKey::Code(KeyCode::Digit3) => renderer.select_scene(2),
-                        _ => {}
+                        _ => return,
                     }
-                    audio_output = match renderer.current_player_handle() {
-                        Some(player) => match AudioOutput::from_shared(player) {
-                            Ok(output) => Some(output),
-                            Err(err) => {
-                                eprintln!("audio disabled: {err:#}");
-                                None
-                            }
-                        },
-                        None => None,
-                    };
-                    window.set_title(&format!("CHARTPLAYER - {}", renderer.scene_name()));
+
+                    self.reset_audio_output();
+                    self.update_window_title();
                 }
             }
             WindowEvent::RedrawRequested => match renderer.render() {
                 RenderResult::Rendered | RenderResult::SkipFrame => {}
                 RenderResult::Reconfigure => renderer.reconfigure(),
-                RenderResult::SurfaceLost => target.exit(),
+                RenderResult::SurfaceLost => event_loop.exit(),
             },
             _ => {}
-        },
-        Event::AboutToWait => window.request_redraw(),
-        _ => {}
-    })?;
+        }
+    }
 
-    Ok(())
+    fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
+        if let Some(window) = self.window.as_ref() {
+            window.request_redraw();
+        }
+    }
 }

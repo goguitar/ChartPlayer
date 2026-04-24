@@ -65,7 +65,6 @@ impl Default for SongIndexEntry {
 pub struct SongIndex {
     pub songs: Vec<SongIndexEntry>,
     pub base_path: Option<String>,
-    stats: Vec<SongStats>,
 }
 
 impl SongIndex {
@@ -75,7 +74,6 @@ impl SongIndex {
         Self {
             songs: Vec::new(),
             base_path: base.clone(),
-            stats: Vec::new(),
         }
     }
 
