@@ -1,0 +1,38 @@
+name: Rust Test
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'chart_player_rust/**'
+      - '.github/workflows/rust-test.yml'
+  pull_request:
+    paths:
+      - 'chart_player_rust/**'
+      - '.github/workflows/rust-test.yml'
+
+jobs:
+  test:
+    name: Run Rust Tests
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: chart_player_rust
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build outputs
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: chart_player_rust -> target
+
+      - name: Run Rust tests
+        run: cargo test --locked --verbose

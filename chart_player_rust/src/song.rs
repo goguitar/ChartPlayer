@@ -3,7 +3,6 @@
 //! Provides data structures for songs, notes, and song indexing.
 
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 
@@ -559,4 +558,126 @@ pub enum SongTuningMode {
     CSharpStandard = 5,
     CStandard = 6,
     BStandard = 7,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    struct TestDir {
+        path: std::path::PathBuf,
+    }
+
+    impl TestDir {
+        fn new() -> Self {
+            let unique = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("system time before unix epoch")
+                .as_nanos();
+            let path = std::env::temp_dir().join(format!("chart_player_song_tests_{unique}"));
+            fs::create_dir_all(&path).expect("failed to create test directory");
+            Self { path }
+        }
+
+        fn path(&self) -> &Path {
+            &self.path
+        }
+    }
+
+    impl Drop for TestDir {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.path);
+        }
+    }
+
+    fn write_song_json(path: &Path, song_name: &str, artist_name: &str) {
+        let song = SongData {
+            song_name: song_name.to_string(),
+            artist_name: artist_name.to_string(),
+            album_name: "Test Album".to_string(),
+            song_length_seconds: 123.5,
+            a440_cents_offset: 0.0,
+            instrument_parts: vec![SongInstrumentPart {
+                instrument_type: SongInstrumentType::LeadGuitar,
+                instrument_name: "lead".to_string(),
+                arrangement_name: Some("Lead".to_string()),
+                song_audio: Some("song.ogg".to_string()),
+                song_stem: Some("lead.ogg".to_string()),
+                tuning: Some(SongTuning {
+                    string_semitone_offsets: vec![0, 0, 0, 0, 0, 0],
+                }),
+                capo_fret: 0,
+                song_difficulty: 2.5,
+            }],
+        };
+        let contents = serde_json::to_string(&song).expect("failed to serialize song data");
+        fs::write(path.join("song.json"), contents).expect("failed to write song.json");
+    }
+
+    #[test]
+    fn load_scans_song_folder_and_writes_index_json() {
+        let temp = TestDir::new();
+        let song_folder = temp.path().join("My Song");
+        fs::create_dir_all(&song_folder).expect("failed to create song folder");
+        write_song_json(&song_folder, "My Song", "Test Artist");
+
+        let index = SongIndex::load(temp.path().to_str().expect("invalid temp path"), true)
+            .expect("failed to load song index");
+
+        assert_eq!(index.songs.len(), 1);
+        assert_eq!(index.songs[0].song_name, "My Song");
+        assert_eq!(index.songs[0].artist_name, "Test Artist");
+        assert_eq!(index.songs[0].folder_path, "My Song");
+        assert!(temp.path().join("index.json").exists());
+    }
+
+    #[test]
+    fn load_uses_existing_index_file_without_rescan() {
+        let temp = TestDir::new();
+        let entry = SongIndexEntry {
+            song_name: "Indexed Song".to_string(),
+            artist_name: "Indexed Artist".to_string(),
+            album_name: "Indexed Album".to_string(),
+            folder_path: "indexed/song".to_string(),
+            arrangements: "L".to_string(),
+            length_seconds: 150.0,
+            lead_guitar_tuning: Some("E Standard".to_string()),
+            rhythm_guitar_tuning: None,
+            bass_guitar_tuning: None,
+            song_difficulty: vec![1.0, 0.0, 0.0],
+            stats: Vec::new(),
+        };
+        let contents = serde_json::to_string(&vec![entry]).expect("failed to serialize index");
+        fs::write(temp.path().join("index.json"), contents).expect("failed to write index.json");
+
+        let index = SongIndex::load(temp.path().to_str().expect("invalid temp path"), false)
+            .expect("failed to load existing index");
+
+        assert_eq!(index.songs.len(), 1);
+        assert_eq!(index.songs[0].song_name, "Indexed Song");
+        assert_eq!(index.songs[0].folder_path, "indexed/song");
+    }
+
+    #[test]
+    fn get_song_path_joins_base_and_relative_folder() {
+        let index = SongIndex::new(Some("/tmp/chartplayer"));
+        let entry = SongIndexEntry {
+            song_name: "Song".to_string(),
+            artist_name: "Artist".to_string(),
+            album_name: "Album".to_string(),
+            folder_path: "set/song".to_string(),
+            arrangements: String::new(),
+            length_seconds: 60.0,
+            lead_guitar_tuning: None,
+            rhythm_guitar_tuning: None,
+            bass_guitar_tuning: None,
+            song_difficulty: Vec::new(),
+            stats: Vec::new(),
+        };
+
+        let song_path = index.get_song_path(&entry);
+
+        assert!(song_path.ends_with("/tmp/chartplayer/set/song") || song_path.ends_with(r"\tmp\chartplayer\set\song"));
+    }
 }

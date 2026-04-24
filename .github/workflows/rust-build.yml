@@ -1,0 +1,38 @@
+name: Rust Build
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'chart_player_rust/**'
+      - '.github/workflows/rust-build.yml'
+  pull_request:
+    paths:
+      - 'chart_player_rust/**'
+      - '.github/workflows/rust-build.yml'
+
+jobs:
+  build:
+    name: Build Rust Project
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: chart_player_rust
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build outputs
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: chart_player_rust -> target
+
+      - name: Build Rust binaries
+        run: cargo build --locked --verbose --bins

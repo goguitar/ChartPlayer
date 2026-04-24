@@ -1,0 +1,86 @@
+name: Rust Release
+
+on:
+  workflow_dispatch:
+  release:
+    types:
+      - published
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    name: Package Rust Release (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            artifact_name: chart-player-rust-linux-x64
+            archive_name: chart-player-rust-linux-x64.tar.gz
+            binary_path: chart_player_rust/target/release/chart_player
+            image_processor_path: chart_player_rust/target/release/image_processor
+          - os: windows-latest
+            artifact_name: chart-player-rust-windows-x64
+            archive_name: chart-player-rust-windows-x64.zip
+            binary_path: chart_player_rust/target/release/chart_player.exe
+            image_processor_path: chart_player_rust/target/release/image_processor.exe
+          - os: macos-latest
+            artifact_name: chart-player-rust-macos
+            archive_name: chart-player-rust-macos.tar.gz
+            binary_path: chart_player_rust/target/release/chart_player
+            image_processor_path: chart_player_rust/target/release/image_processor
+
+    defaults:
+      run:
+        working-directory: chart_player_rust
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build outputs
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: chart_player_rust -> target
+
+      - name: Build release binaries
+        run: cargo build --locked --release --bins
+
+      - name: Package release archive (Unix)
+        if: runner.os != 'Windows'
+        working-directory: .
+        run: |
+          mkdir -p release-package
+          cp "${{ matrix.binary_path }}" release-package/
+          cp "${{ matrix.image_processor_path }}" release-package/
+          tar -czf "${{ matrix.archive_name }}" -C release-package .
+
+      - name: Package release archive (Windows)
+        if: runner.os == 'Windows'
+        working-directory: .
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path release-package | Out-Null
+          Copy-Item "${{ matrix.binary_path }}" release-package
+          Copy-Item "${{ matrix.image_processor_path }}" release-package
+          Compress-Archive -Path release-package\* -DestinationPath "${{ matrix.archive_name }}" -Force
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: ${{ matrix.archive_name }}
+
+      - name: Upload release asset
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ matrix.archive_name }}
