@@ -1,5 +1,6 @@
 //! ChartPlayer - Main entry point for GUI
-use chart_player::{init, constants::VERSION};
+use chart_player::init;
+use chart_player::VERSION;
 
 fn main() {
     init();

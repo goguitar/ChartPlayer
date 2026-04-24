@@ -6,6 +6,7 @@ pub mod midi;
 pub mod audio;
 pub mod song;
 pub mod settings;
+pub mod ui;
 
 pub use camera::Camera3D;
 pub use scene::{Scene3D, ChartScene3D, DrumPlayerScene3D, FretPlayerScene3D, KeysPlayerScene3D};
@@ -13,6 +14,7 @@ pub use midi::{DrumVoice, DrumHit, DrumMidiDeviceConfiguration};
 pub use audio::SongPlayer;
 pub use song::{SongIndex, SongIndexEntry, SongData, SongInstrumentType};
 pub use settings::SongPlayerSettings;
+pub use ui::Player;
 
 pub const VERSION: &str = "0.1.26";
 

@@ -3,7 +3,7 @@ name = "chart_player"
 version = "0.1.0"
 edition = "2021"
 authors = ["ChartPlayer Team"]
-description = "A music chart player for Guitar Hero/Rock Band style games"
+description = "A music chart player"
 
 [lib]
 name = "chart_player"
@@ -20,22 +20,19 @@ path = "src/image_processor.rs"
 [dependencies]
 glow = "0.17"
 image = "0.25"
-
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-
 log = "0.4"
 env_logger = "0.11"
-
 nalgebra = "0.33"
 cgmath = "0.18"
-
 thiserror = "2.0"
 anyhow = "1.0"
 rodio = "0.22.2"
-
-# Use gtk4 crate (not "gtk")
-gtk4 = "0.11"
+winit = "0.30"
+wgpu = "29"
+pollster = "0.2"
+bytemuck = "1.0"
 
 [features]
 default = []
